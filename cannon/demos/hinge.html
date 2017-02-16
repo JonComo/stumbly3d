@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>cannon.js - hinge demo</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="css/style.css" type="text/css"/>
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  </head>
+  <body>
+    <script src="../build/cannon.js"></script>
+    <script src="../build/cannon.demo.js"></script>
+    <script src="../libs/dat.gui.js"></script>
+    <script src="../libs/Three.js"></script>
+    <script src="../libs/TrackballControls.js"></script>
+    <script src="../libs/Detector.js"></script>
+    <script src="../libs/Stats.js"></script>
+    <script src="../libs/smoothie.js"></script>
+    <script>
+
+    /**
+        * Demonstrates how to use the HingeConstraint.
+        * A hinge constraint makes sure that two bodies can rotate around a common axis. For example, think of a door hinge.
+        */
+
+    var demo = new CANNON.Demo();
+    var mass = 1;
+    var world;
+
+    world = demo.getWorld();
+    world.gravity.set(0,5,-20);
+
+    var s = 2, d = 0.1*s;
+    var shape = new CANNON.Box(new CANNON.Vec3(s*0.5,s*0.1,s*0.5));
+
+    var body = new CANNON.Body({ mass: mass });
+    body.addShape(shape);
+
+    var body2 = new CANNON.Body({ mass: mass });
+    body2.addShape(shape);
+    body2.position.z = s + d*2;
+
+    var body3 = new CANNON.Body({ mass: mass });
+    body3.addShape(shape);
+    body3.position.z = s + d*3;
+
+    // Hinge it
+    var c = new CANNON.HingeConstraint(body2, body, {
+        pivotA: new CANNON.Vec3(0,0,-s*0.5-d),
+        axisA: new CANNON.Vec3(1,0,0),
+        pivotB: new CANNON.Vec3(0,0,s*0.5+d),
+        axisB: new CANNON.Vec3(1,0,0)
+    });
+
+    c.enableMotor();
+    world.addConstraint(c);
+
+    var c2 = new CANNON.HingeConstraint(body3, body2, {
+        pivotA: new CANNON.Vec3(0,0,-s*0.5-d),
+        axisA: new CANNON.Vec3(1,0,0),
+        pivotB: new CANNON.Vec3(0,0,s*0.5+d),
+        axisB: new CANNON.Vec3(0,1,0)
+    });
+
+    c2.enableMotor();
+    world.addConstraint(c2);
+
+    // Ground
+    var groundMaterial = new CANNON.Material("groundMaterial");
+    var groundShape = new CANNON.Plane();
+    var ground = new CANNON.Body({ mass: 0, material: groundMaterial });
+
+    ground.addShape(groundShape);
+    ground.position.z = -3;
+
+
+    world.addBody(ground);
+    demo.addVisual(ground);
+
+    world.addBody(body);
+    demo.addVisual(body);
+
+    world.addBody(body2);
+    demo.addVisual(body2);
+
+    world.addBody(body3);
+    demo.addVisual(body3);
+    
+    //demo.start();
+    
+    var t = 0;
+    var t2 = 0;
+    function render() {
+        requestAnimationFrame( render );
+        world.step( 1/60 );            // Update physics
+        t += Math.random() * 0.2;
+        t2 += Math.random() * 0.2;
+
+        c2.setMotorSpeed(Math.sin(t2) * 3);
+
+        var eul = new CANNON.Vec3(0, 0, 0);
+        body.quaternion.toEuler(eul);
+
+        c.setMotorSpeed(Math.sin(eul.x + eul.z)*3);
+
+        //cannonDebugRenderer.update();      // Update the debug renderer
+        //renderer.render( scene, camera );  // Render the scene
+    }
+
+    render();
+
+    </script>
+  </body>
+</html>

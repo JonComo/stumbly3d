@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>stumbly3d</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="css/style.css" type="text/css"/>
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  </head>
+  <body>
+
+    <script src="build/cannon.js"></script>
+    <script src="build/cannon.demo.js"></script>
+    <script src="libs/dat.gui.js"></script>
+    <script src="libs/Three.js"></script>
+    <script src="libs/TrackballControls.js"></script>
+    <script src="libs/Detector.js"></script>
+    <script src="libs/Stats.js"></script>
+    <script src="libs/smoothie.js"></script>
+    <script src="libs/numeric-1.2.6.js"></script>
+
+    <script>
+
+    var demo = new CANNON.Demo();
+    var mass = 1;
+    var world;
+
+    world = demo.getWorld();
+    world.gravity.set(0,5,-20);
+
+    var s = 2, d = 0.1*s;
+    var shape = new CANNON.Box(new CANNON.Vec3(s*0.5,s*0.1,s*0.5));
+
+    var body = new CANNON.Body({ mass: mass });
+    body.addShape(shape);
+
+    var body2 = new CANNON.Body({ mass: mass });
+    body2.addShape(shape);
+    body2.position.z = s + d*2;
+
+    var body3 = new CANNON.Body({ mass: mass });
+    body3.addShape(shape);
+    body3.position.z = s + d*3;
+
+    // Hinge it
+    var c = new CANNON.HingeConstraint(body2, body, {
+        pivotA: new CANNON.Vec3(0,0,-s*0.5-d),
+        axisA: new CANNON.Vec3(1,0,0),
+        pivotB: new CANNON.Vec3(0,0,s*0.5+d),
+        axisB: new CANNON.Vec3(1,0,0)
+    });
+
+    c.enableMotor();
+    world.addConstraint(c);
+
+    var c2 = new CANNON.HingeConstraint(body3, body2, {
+        pivotA: new CANNON.Vec3(0,0,-s*0.5-d),
+        axisA: new CANNON.Vec3(1,0,0),
+        pivotB: new CANNON.Vec3(0,0,s*0.5+d),
+        axisB: new CANNON.Vec3(0,1,0)
+    });
+
+    c2.enableMotor();
+    world.addConstraint(c2);
+
+    // Ground
+    var groundMaterial = new CANNON.Material("groundMaterial");
+    var groundShape = new CANNON.Plane();
+    var ground = new CANNON.Body({ mass: 0, material: groundMaterial });
+
+    ground.addShape(groundShape);
+    ground.position.z = -3;
+
+    world.addBody(ground);
+    demo.addVisual(ground);
+
+    world.addBody(body);
+    demo.addVisual(body);
+
+    world.addBody(body2);
+    demo.addVisual(body2);
+
+    world.addBody(body3);
+    demo.addVisual(body3);
+    
+    function features(bodies) {
+        var fet = [];
+
+        var eul = new CANNON.Vec3(0, 0, 0);
+        for (var i = 0; i < bodies.length; i++) {
+            var b = bodies[i];
+            b.quaternion.toEuler(eul);
+            fet = fet.concat([eul.x, eul.y, eul.z, Math.sin(eul.x), Math.sin(eul.y)]);
+        }
+
+        return fet;
+    }
+
+    function mat(r, c) {
+        var s = 1.0;
+        var mat = numeric.random([r, c]);
+        mat = numeric.mul(mat, s);
+        mat = numeric.add(mat, -s/2);
+        return mat;
+    }
+
+    function mat_fn(m, fn) {
+        var d = numeric.dim(m);
+        var mcopy = numeric.random([d[0], d[1]]);
+        for (var i = 0; i < d[0]; i++) {
+            for (var j = 0; j < d[1]; j++) {
+                mcopy[i][j] = fn(m[i][j]);
+            }
+        }
+        return m;
+    }
+
+    // RL
+    var bodies = [body, body2, body3];
+    var joints = [c, c2];
+
+    // matrices
+    var X_DIM = features(bodies).length;
+    var H_DIM = 20;
+    var OUT_DIM = 2;
+
+    var W1 = mat(H_DIM, X_DIM);
+    var W2 = mat(OUT_DIM, H_DIM);
+
+    var h2;
+    
+    function render() {
+        requestAnimationFrame( render );
+
+        for (var iter = 0; iter < 1; iter++) {
+            world.step( 1/60 );
+            
+
+            var x = features(bodies);
+            var z1 = numeric.dot(W1, x);
+
+            h1 = mat_fn(z1, Math.tanh); // h1
+            var z2 = numeric.dot(W2, h1);
+            h2 = numeric.mul(z2, 2.0);
+
+            c.setMotorSpeed(h2[0]);
+            c2.setMotorSpeed(h2[1]);
+        }
+
+        demo.animate();
+    }
+
+    render();
+
+    </script>
+  </body>
+</html>
