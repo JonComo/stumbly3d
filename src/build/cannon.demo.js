@@ -450,17 +450,17 @@ CANNON.Demo = function(options){
         document.body.appendChild( container );
 
         // Camera
-        camera = new THREE.PerspectiveCamera( 24, SCREEN_WIDTH / SCREEN_HEIGHT, NEAR, FAR );
+        camera = new THREE.PerspectiveCamera( 32, SCREEN_WIDTH / SCREEN_HEIGHT, NEAR, FAR );
 
         camera.up.set(0,0,1);
         camera.position.set(0,30,20);
 
         // SCENE
         scene = that.scene = new THREE.Scene();
-        scene.fog = new THREE.Fog( 0x222222, 1000, FAR );
+        scene.fog = new THREE.Fog( 0x000000, 1000, FAR );
 
         // LIGHTS
-        ambient = new THREE.AmbientLight( 0x222222 );
+        ambient = new THREE.AmbientLight( 0x333333 );
         scene.add( ambient );
 
         light = new THREE.SpotLight( 0xffffff );
@@ -484,7 +484,7 @@ CANNON.Demo = function(options){
         scene.add( camera );
 
         // RENDERER
-        renderer = new THREE.WebGLRenderer( { clearColor: 0x000000, clearAlpha: 1, antialias: false } );
+        renderer = new THREE.WebGLRenderer( { clearColor: 0x000000, clearAlpha: 1, antialias: true } );
         renderer.setSize( SCREEN_WIDTH, SCREEN_HEIGHT );
         renderer.domElement.style.position = "relative";
         renderer.domElement.style.top = MARGIN + 'px';

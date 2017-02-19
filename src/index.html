@@ -24,43 +24,60 @@
     var mass = 1;
     var world;
 
+    // RL
+    var bodies = [];
+    var joints = [];
+
     world = demo.getWorld();
     world.gravity.set(0,5,-20);
 
-    var s = 2, d = 0.1*s;
-    var shape = new CANNON.Box(new CANNON.Vec3(s*0.5,s*0.1,s*0.5));
+    function add_part(part) {
+        world.addBody(part);
+        demo.addVisual(part);
+    }
 
-    var body = new CANNON.Body({ mass: mass });
-    body.addShape(shape);
+    function add_box(x, y, z, sx, sy, sz) {
+        let box = new CANNON.Body({ mass: mass });
+        box.addShape(new CANNON.Box(Vec3(sx, sy, sz)));
+        box.position = Vec3(x, y, z);
+        add_part(box);
+        bodies.push(box);
+        return box;
+    }
 
-    var body2 = new CANNON.Body({ mass: mass });
-    body2.addShape(shape);
-    body2.position.z = s + d*2;
+    function add_joint(a, b, pa, pb, axis) {
+        var c = new CANNON.HingeConstraint(a, b, {
+            pivotA: pa,
+            axisA: axis,
+            pivotB: pb,
+            axisB: axis
+        });
 
-    var body3 = new CANNON.Body({ mass: mass });
-    body3.addShape(shape);
-    body3.position.z = s + d*3;
+        c.enableMotor();
+        c.setMotorMaxForce(1e8);
+        world.addConstraint(c);
+        joints.push(c);
+        return c;
+    }
 
-    // Hinge it
-    var c = new CANNON.HingeConstraint(body2, body, {
-        pivotA: new CANNON.Vec3(0,0,-s*0.5-d),
-        axisA: new CANNON.Vec3(1,0,0),
-        pivotB: new CANNON.Vec3(0,0,s*0.5+d),
-        axisB: new CANNON.Vec3(1,0,0)
-    });
+    function Vec3(x, y, z) {
+        return new CANNON.Vec3(x, y, z);
+    }
 
-    c.enableMotor();
-    world.addConstraint(c);
+    let b = add_box(0, 0, 0, 3, 1.5, .8);
 
-    var c2 = new CANNON.HingeConstraint(body3, body2, {
-        pivotA: new CANNON.Vec3(0,0,-s*0.5-d),
-        axisA: new CANNON.Vec3(1,0,0),
-        pivotB: new CANNON.Vec3(0,0,s*0.5+d),
-        axisB: new CANNON.Vec3(0,1,0)
-    });
+    // legs
+    let l = 4;
+    let d = 2;
+    let r1 = add_box(-2, 2, 0, l, .2, .2);
+    let r2 = add_box(-2, -2, 0, l, .2, .2);
+    let l1 = add_box(2, 2, 0, l, .2, .2);
+    let l2 = add_box(2, -2, 0, l, .2, .2);
 
-    c2.enableMotor();
-    world.addConstraint(c2);
+    let c1 = add_joint(b, r1, Vec3(-d, 1, 0), Vec3(1, -1, 0), Vec3(0, 1, 0));
+    let c2 = add_joint(b, r2, Vec3(-d, -1, 0), Vec3(1, 1, 0), Vec3(0, 1, 0));
+    let c3 = add_joint(b, l1, Vec3(d, 1, 0), Vec3(-1, -1, 0), Vec3(0, 1, 0));
+    let c4 = add_joint(b, l2, Vec3(d, -1, 0), Vec3(-1, 1, 0), Vec3(0, 1, 0));
 
     // Ground
     var groundMaterial = new CANNON.Material("groundMaterial");
@@ -72,15 +89,6 @@
 
     world.addBody(ground);
     demo.addVisual(ground);
-
-    world.addBody(body);
-    demo.addVisual(body);
-
-    world.addBody(body2);
-    demo.addVisual(body2);
-
-    world.addBody(body3);
-    demo.addVisual(body3);
     
     function features(bodies) {
         var fet = [];
@@ -115,16 +123,22 @@
     }
 
     // RL
-    var bodies = [body, body2, body3];
-    var joints = [c, c2];
 
     // matrices
     var X_DIM = features(bodies).length;
     var H_DIM = 20;
-    var OUT_DIM = 2;
+    var OUT_DIM = joints.length;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM);
+
+    window.onkeypress = function(evt) {
+        console.log(evt);
+        if (evt.key == "r") {
+            W1 = mat(H_DIM, X_DIM);
+            W2 = mat(OUT_DIM, H_DIM);
+        }
+    }
 
     var h2;
     
@@ -134,16 +148,17 @@
         for (var iter = 0; iter < 1; iter++) {
             world.step( 1/60 );
             
-
+            
             var x = features(bodies);
             var z1 = numeric.dot(W1, x);
 
             h1 = mat_fn(z1, Math.tanh); // h1
             var z2 = numeric.dot(W2, h1);
-            h2 = numeric.mul(z2, 2.0);
-
-            c.setMotorSpeed(h2[0]);
-            c2.setMotorSpeed(h2[1]);
+            h2 = numeric.mul(z2, 1.0);
+            
+            for (let i = 0; i < OUT_DIM; i++) {
+                joints[i].setMotorSpeed(h2[i]);
+            }
         }
 
         demo.animate();
