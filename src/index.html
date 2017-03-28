@@ -29,7 +29,7 @@
     var joints = [];
 
     world = demo.getWorld();
-    world.gravity.set(0,5,-20);
+    world.gravity.set(0,0,-40);
 
     function add_part(part) {
         world.addBody(part);
@@ -38,7 +38,7 @@
 
     function add_box(x, y, z, sx, sy, sz) {
         let box = new CANNON.Body({ mass: mass });
-        box.addShape(new CANNON.Box(Vec3(sx, sy, sz)));
+        box.addShape(new CANNON.Box(Vec3(sx, sy, sz)));8
         box.position = Vec3(x, y, z);
         add_part(box);
         bodies.push(box);
@@ -64,20 +64,24 @@
         return new CANNON.Vec3(x, y, z);
     }
 
-    let b = add_box(0, 0, 0, 3, 1.5, .8);
+    var b = add_box(0, 0, 0, 6, 3, .8);
 
     // legs
-    let l = 4;
-    let d = 2;
-    let r1 = add_box(-2, 2, 0, l, .2, .2);
-    let r2 = add_box(-2, -2, 0, l, .2, .2);
-    let l1 = add_box(2, 2, 0, l, .2, .2);
-    let l2 = add_box(2, -2, 0, l, .2, .2);
+    let lsize = .4;
 
-    let c1 = add_joint(b, r1, Vec3(-d, 1, 0), Vec3(1, -1, 0), Vec3(0, 1, 0));
-    let c2 = add_joint(b, r2, Vec3(-d, -1, 0), Vec3(1, 1, 0), Vec3(0, 1, 0));
-    let c3 = add_joint(b, l1, Vec3(d, 1, 0), Vec3(-1, -1, 0), Vec3(0, 1, 0));
-    let c4 = add_joint(b, l2, Vec3(d, -1, 0), Vec3(-1, 1, 0), Vec3(0, 1, 0));
+    let l = 2.0;
+    let d = 5.5;
+    let yd = 1.8;
+
+    let r1 = add_box(-d, yd, 0, l, lsize, lsize);
+    let r2 = add_box(-d, -yd, 0, l, lsize, lsize);
+    let l1 = add_box(d, yd, 0, l, lsize, lsize);
+    let l2 = add_box(d, -yd, 0, l, lsize, lsize);
+
+    let c1 = add_joint(b, r1, Vec3(-d, yd*2, 0), Vec3(l-.3, -0, 0), Vec3(0, 1, 0));
+    let c2 = add_joint(b, r2, Vec3(-d, -yd*2, 0), Vec3(l-.3, 0, 0), Vec3(0, 1, 0));
+    let c3 = add_joint(b, l1, Vec3(d, yd*2, 0), Vec3(-l+.3, -0, 0), Vec3(0, 1, 0));
+    let c4 = add_joint(b, l2, Vec3(d, -yd*2, 0), Vec3(-l+.3, 0, 0), Vec3(0, 1, 0));
 
     // Ground
     var groundMaterial = new CANNON.Material("groundMaterial");
@@ -91,13 +95,18 @@
     demo.addVisual(ground);
     
     function features(bodies) {
-        var fet = [];
+        var fet = [1];
 
-        var eul = new CANNON.Vec3(0, 0, 0);
+        
         for (var i = 0; i < bodies.length; i++) {
-            var b = bodies[i];
+            let b = bodies[i];
+
+            var eul = new CANNON.Vec3(0, 0, 0);
             b.quaternion.toEuler(eul);
-            fet = fet.concat([eul.x, eul.y, eul.z, Math.sin(eul.x), Math.sin(eul.y)]);
+            fet = fet.concat([Math.sin(eul.x), Math.sin(eul.y), Math.sin(eul.z)]);
+            fet = fet.concat([Math.cos(eul.x), Math.cos(eul.y), Math.cos(eul.z)]);
+            fet = fet.concat([Math.tanh(b.velocity.x), Math.tanh(b.velocity.y), Math.tanh(b.velocity.z)]);
+            fet = fet.concat([b.position.z]);
         }
 
         return fet;
@@ -112,56 +121,159 @@
     }
 
     function mat_fn(m, fn) {
-        var d = numeric.dim(m);
-        var mcopy = numeric.random([d[0], d[1]]);
-        for (var i = 0; i < d[0]; i++) {
-            for (var j = 0; j < d[1]; j++) {
-                mcopy[i][j] = fn(m[i][j]);
+        let d = numeric.dim(m);
+
+        if (d.length == 1) {
+            let mcopy = numeric.random([d[0]]);
+
+            for (let j = 0; j < d[0]; j++) {
+                mcopy[j] = fn(m[j]);
             }
+
+            return mcopy;
+        } else {
+            let mcopy = numeric.random([d[0], d[1]]);
+
+            for (let i = 0; i < d[0]; i++) {
+                for (let j = 0; j < d[1]; j++) {
+                    mcopy[i][j] = fn(m[i][j]);
+                }
+            }
+
+            return mcopy;
         }
-        return m;
+    }
+
+    function copy_mat(m) {
+        return mat_fn(m, function(x) {
+            return x;
+        });
+    }
+
+    function move_random() {
+        for (let i = 0; i < 20; i++) {
+            let h2 = numeric.random([OUT_DIM]);
+            h2 = mat_fn(h2, Math.tanh);
+
+            for (let i = 0; i < OUT_DIM; i++) {
+                joints[i].setMotorSpeed(h2[i] * 5);
+            }
+
+            world.step( 1/60 );
+        }
+    }
+
+    function run_step() {
+        
+        let x = features(bodies);
+        let z1 = numeric.dot(W1, x);
+
+        let h1 = mat_fn(z1, Math.tanh); // h1
+        let z2 = numeric.dot(W2, h1);
+        let h2 = mat_fn(z2, Math.tanh);
+        
+        for (let i = 0; i < OUT_DIM; i++) {
+            joints[i].setMotorSpeed(h2[i] * 5);
+        }
+
+        world.step( 1/60 );
+
+        //console.log(h1);
     }
 
     // RL
 
     // matrices
     var X_DIM = features(bodies).length;
-    var H_DIM = 20;
+    var H_DIM = 40;
     var OUT_DIM = joints.length;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM);
 
+    var training = false;
+    var run = 0;
+    var step = 0;
+
     window.onkeypress = function(evt) {
-        console.log(evt);
         if (evt.key == "r") {
             W1 = mat(H_DIM, X_DIM);
             W2 = mat(OUT_DIM, H_DIM);
+            best_weights = [copy_mat(W1), copy_mat(W2)];
+        } else if (evt.key == "t") {
+            // train
+            training = !training;
+            run = 0;
+            step = 0;
+
+            if (training == false) {
+                W1 = best_weights[0];
+                W2 = best_weights[1];
+                demo.restartCurrentScene();
+            }
         }
     }
 
     var h2;
+
+    var max_dist = -100000;
+    var best_weights = [copy_mat(W1), copy_mat(W2)];
+
     
     function render() {
         requestAnimationFrame( render );
 
-        for (var iter = 0; iter < 1; iter++) {
-            world.step( 1/60 );
-            
-            
-            var x = features(bodies);
-            var z1 = numeric.dot(W1, x);
+        if (training) {
 
-            h1 = mat_fn(z1, Math.tanh); // h1
-            var z2 = numeric.dot(W2, h1);
-            h2 = numeric.mul(z2, 1.0);
-            
-            for (let i = 0; i < OUT_DIM; i++) {
-                joints[i].setMotorSpeed(h2[i]);
+            W1 = numeric.add(W1, numeric.mul(mat(H_DIM, X_DIM), 0.3));
+            W2 = numeric.add(W2, numeric.mul(mat(OUT_DIM, H_DIM), 0.3));
+
+            //W1 = mat(H_DIM, X_DIM);
+            //W2 = mat(OUT_DIM, H_DIM);
+
+            var avg_d = 0.0;
+
+            for (let ai = 0; ai < 6; ai++) {
+                demo.restartCurrentScene();
+                move_random();
+
+                for (var step = 0; step < 200; step++) {
+                    run_step();
+                }
+
+                let bod = bodies[0];
+
+                // walk close
+                let d = bod.position.y;
+
+                // walk left
+                //let d = bod.position.x;
+
+                // stay low
+                //let d = -bod.position.z;
+
+                avg_d += d;
+
+                demo.animate();
             }
-        }
+            
 
-        demo.animate();
+            if (avg_d > max_dist) {
+                max_dist = avg_d;
+                best_weights = [copy_mat(W1), copy_mat(W2)];
+                console.log('new max: ' + avg_d);
+            }
+
+        } else {
+            run_step();
+
+            demo.animate();
+
+            let bod = bodies[0];
+            //console.log('pos x: ' + bod.position.x + ' y: ' + bod.position.y + ' z: ' + bod.position.z);
+
+        }
+        
     }
 
     render();

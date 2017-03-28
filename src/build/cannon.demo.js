@@ -426,8 +426,8 @@ CANNON.Demo = function(options){
         Detector.addGetWebGLMessage();
     }
 
-    var SHADOW_MAP_WIDTH = 512;
-    var SHADOW_MAP_HEIGHT = 512;
+    var SHADOW_MAP_WIDTH = 1024;
+    var SHADOW_MAP_HEIGHT = 1024;
     var MARGIN = 0;
     var SCREEN_WIDTH = window.innerWidth;
     var SCREEN_HEIGHT = window.innerHeight - 2 * MARGIN;
@@ -470,8 +470,8 @@ CANNON.Demo = function(options){
         light.castShadow = true;
 
         light.shadowCameraNear = 10;
-        light.shadowCameraFar = 100;//camera.far;
-        light.shadowCameraFov = 30;
+        light.shadowCameraFar = 10000;//camera.far;
+        light.shadowCameraFov = 90;
 
         light.shadowMapBias = 0.0039;
         light.shadowMapDarkness = 0.5;
@@ -918,6 +918,10 @@ CANNON.Demo.prototype.getWorld = function(){
 
 CANNON.Demo.prototype.animate = function(){
     return this.animate;
+};
+
+CANNON.Demo.prototype.render = function() {
+    return this.render;
 };
 
 CANNON.Demo.prototype.addVisual = function(body){
