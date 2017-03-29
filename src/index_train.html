@@ -203,7 +203,6 @@
         } else if (evt.key == "t") {
             // train
             training = !training;
-            run = 0;
             step = 0;
 
             if (training == false) {
@@ -219,50 +218,36 @@
     var max_dist = -100000;
     var best_weights = [copy_mat(W1), copy_mat(W2)];
 
-    
+    var step = 0;
+
     function render() {
         requestAnimationFrame( render );
 
         if (training) {
 
-            W1 = numeric.add(W1, numeric.mul(mat(H_DIM, X_DIM), 0.3));
-            W2 = numeric.add(W2, numeric.mul(mat(OUT_DIM, H_DIM), 0.3));
-
-            //W1 = mat(H_DIM, X_DIM);
-            //W2 = mat(OUT_DIM, H_DIM);
-
-            var avg_d = 0.0;
-
-            for (let ai = 0; ai < 6; ai++) {
+            if (step > 100) {
+                step = 0;
                 demo.restartCurrentScene();
                 move_random();
-
-                for (var step = 0; step < 200; step++) {
-                    run_step();
-                }
-
-                let bod = bodies[0];
-
-                // walk close
-                //let d = bod.position.y;
-
-                // walk left
-                let d = bod.position.x;
-
-                // stay low
-                //let d = -bod.position.z;
-
-                avg_d += d;
-
-                demo.animate();
+            } else {
+                step += 1;
             }
             
 
-            if (avg_d > max_dist) {
-                max_dist = avg_d;
-                best_weights = [copy_mat(W1), copy_mat(W2)];
-                console.log('new max: ' + avg_d);
+            let x = features(bodies);
+            let z1 = numeric.dot(W1, x);
+
+            let h1 = mat_fn(z1, Math.tanh); // h1
+            let z2 = numeric.dot(W2, h1);
+            let h2 = mat_fn(z2, Math.tanh);
+            
+            for (let i = 0; i < OUT_DIM; i++) {
+                joints[i].setMotorSpeed(h2[i] * 5);
             }
+
+            world.step( 1/60 );
+
+            demo.animate();
 
         } else {
             run_step();
