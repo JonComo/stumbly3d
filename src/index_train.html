@@ -120,6 +120,20 @@
         return mat;
     }
 
+    function rand_normal() {
+        var u = 1 - Math.random(); // Subtraction to flip [0, 1) to (0, 1].
+        var v = 1 - Math.random();
+        return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+    }
+
+    function rand_vect(d) {
+        let v = numeric.random([d]);
+        for (let i = 0; i < d; i++) {
+            v[i] = rand_normal();
+        }
+        return v;
+    }
+
     function mat_fn(m, fn) {
         let d = numeric.dim(m);
 
@@ -163,24 +177,6 @@
         }
     }
 
-    function run_step() {
-        
-        let x = features(bodies);
-        let z1 = numeric.dot(W1, x);
-
-        let h1 = mat_fn(z1, Math.tanh); // h1
-        let z2 = numeric.dot(W2, h1);
-        let h2 = mat_fn(z2, Math.tanh);
-        
-        for (let i = 0; i < OUT_DIM; i++) {
-            joints[i].setMotorSpeed(h2[i] * 5);
-        }
-
-        world.step( 1/60 );
-
-        //console.log(h1);
-    }
-
     // RL
 
     // matrices
@@ -188,12 +184,13 @@
     var H_DIM = 40;
     var OUT_DIM = joints.length;
 
+    var VARIANCE = .2;
+
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM);
 
     var training = false;
     var run = 0;
-    var step = 0;
 
     window.onkeypress = function(evt) {
         if (evt.key == "r") {
@@ -203,60 +200,76 @@
         } else if (evt.key == "t") {
             // train
             training = !training;
-            step = 0;
 
             if (training == false) {
-                W1 = best_weights[0];
-                W2 = best_weights[1];
                 demo.restartCurrentScene();
             }
         }
     }
 
-    var h2;
+    function tanh_prime(x) {
+        return 1 / cosh(x) ** 2;
+    }
 
-    var max_dist = -100000;
-    var best_weights = [copy_mat(W1), copy_mat(W2)];
+    function cosh(x) {
+        return (1 + Math.exp(-2 * x)) / (2 * Math.exp(-x));
+    }
 
-    var step = 0;
+    function step(train) {
+        let x = features(bodies);
+        let z1 = numeric.dot(W1, x);
+
+        let h1 = mat_fn(z1, Math.tanh); // h1
+        let z2 = numeric.dot(W2, h1);
+        h2 = mat_fn(z2, Math.tanh);
+
+        let a = numeric.add(h2, numeric.mul(rand_vect(OUT_DIM), VARIANCE));
+        
+        for (let i = 0; i < OUT_DIM; i++) {
+            joints[i].setMotorSpeed(a[i] * 5);
+        }
+
+        let p0 = bodies[0].position.x;
+
+        for (let i = 0; i < 4; i++) {
+            world.step( 1/60 );
+        }
+
+        let p1 = bodies[0].position.x;
+
+        
+        if (train) {
+            let reward = p1 - p0;
+            console.log(reward);
+
+            // update the weights
+
+            let d1 = numeric.sub(a, h2);
+            let d2 = mat_fn(z2, tanh_prime);
+            let gW2 = numeric.mul(d1, d2);
+            // need full product here to get shape of W2
+        }
+    }
 
     function render() {
         requestAnimationFrame( render );
 
         if (training) {
 
-            if (step > 100) {
-                step = 0;
-                demo.restartCurrentScene();
-                move_random();
-            } else {
-                step += 1;
+            demo.restartCurrentScene();
+            move_random();
+            
+            for (let i = 0; i < 300; i++) {
+                step(true);
             }
             
-
-            let x = features(bodies);
-            let z1 = numeric.dot(W1, x);
-
-            let h1 = mat_fn(z1, Math.tanh); // h1
-            let z2 = numeric.dot(W2, h1);
-            let h2 = mat_fn(z2, Math.tanh);
-            
-            for (let i = 0; i < OUT_DIM; i++) {
-                joints[i].setMotorSpeed(h2[i] * 5);
-            }
-
-            world.step( 1/60 );
 
             demo.animate();
 
         } else {
-            run_step();
-
+            
+            step(false);
             demo.animate();
-
-            let bod = bodies[0];
-            //console.log('pos x: ' + bod.position.x + ' y: ' + bod.position.y + ' z: ' + bod.position.z);
-
         }
         
     }
