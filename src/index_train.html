@@ -158,6 +158,16 @@
         }
     }
 
+    function zeros(dimensions) {
+        var array = [];
+
+        for (var i = 0; i < dimensions[0]; ++i) {
+            array.push(dimensions.length == 1 ? 0 : zeros(dimensions.slice(1)));
+        }
+
+        return array;
+    }
+
     function copy_mat(m) {
         return mat_fn(m, function(x) {
             return x;
@@ -184,19 +194,24 @@
     var H_DIM = 40;
     var OUT_DIM = joints.length;
 
-    var VARIANCE = .2;
+    var VARIANCE = .1;
+    var learning_rate = 0.001;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM);
+    var gW1;
+    var gW2;
 
     var training = false;
     var run = 0;
 
+    var avg_reward = 0.0;
+
     window.onkeypress = function(evt) {
         if (evt.key == "r") {
+            console.log('randomized weights');
             W1 = mat(H_DIM, X_DIM);
             W2 = mat(OUT_DIM, H_DIM);
-            best_weights = [copy_mat(W1), copy_mat(W2)];
         } else if (evt.key == "t") {
             // train
             training = !training;
@@ -215,6 +230,20 @@
         return (1 + Math.exp(-2 * x)) / (2 * Math.exp(-x));
     }
 
+    function full_prod(a, b) {
+        let rows = a.length;
+        let cols = b.length;
+
+        let mat = numeric.random([rows, cols]);
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                mat[i][j] = a[i] * b[j];
+            }
+        }
+
+        return mat;
+    }
+
     function step(train) {
         let x = features(bodies);
         let z1 = numeric.dot(W1, x);
@@ -231,7 +260,7 @@
 
         let p0 = bodies[0].position.x;
 
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < 10; i++) {
             world.step( 1/60 );
         }
 
@@ -239,14 +268,40 @@
 
         
         if (train) {
-            let reward = p1 - p0;
-            console.log(reward);
+            let reward = p0 - p1;
+            reward = Math.sign(reward);
+
+            avg_reward += (reward - avg_reward) * 0.001;
 
             // update the weights
 
             let d1 = numeric.sub(a, h2);
             let d2 = mat_fn(z2, tanh_prime);
-            let gW2 = numeric.mul(d1, d2);
+
+            let d_z2 = numeric.mul(d1, d2);
+
+            
+            let d_dh1 = numeric.dot(d_z2, W2);
+            let d_h1_z1 = mat_fn(z1, tanh_prime);
+            let d_z1 = numeric.mul(d_dh1, d_h1_z1);
+
+            if (gW1 == undefined) {
+                gW1 = zeros(numeric.dim(W1));
+                gW2 = zeros(numeric.dim(W2));
+            }
+
+            gW1_targ = full_prod(d_z1, x);
+            gW2_targ = full_prod(d_z2, h1);
+
+            gW1 = numeric.add(gW1, gW1_targ);
+            gW2 = numeric.add(gW2, gW2_targ);
+            
+            W1 = numeric.add(W1, numeric.mul(gW1, reward * learning_rate));
+            W2 = numeric.add(W2, numeric.mul(gW2, reward * learning_rate));
+
+            gW1 = numeric.mul(gW1, 0.9);
+            gW2 = numeric.mul(gW2, 0.9);
+
             // need full product here to get shape of W2
         }
     }
@@ -259,10 +314,11 @@
             demo.restartCurrentScene();
             move_random();
             
-            for (let i = 0; i < 300; i++) {
+            for (let i = 0; i < 100; i++) {
                 step(true);
             }
-            
+
+            console.log(avg_reward);
 
             demo.animate();
 
