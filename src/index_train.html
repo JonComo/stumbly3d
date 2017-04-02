@@ -94,30 +94,9 @@
     world.addBody(ground);
     demo.addVisual(ground);
 
-    // charting
-    
-    let smoothieCanvas = document.createElement("canvas");
-    document.body.appendChild(smoothieCanvas);
-
-    smoothieCanvas.width = 200;
-    smoothieCanvas.height = 100;
-    smoothieCanvas.style.opacity = 0.5;
-    smoothieCanvas.style.position = 'absolute';
-    smoothieCanvas.style.top = '200px';
-    smoothieCanvas.style.left = '0px';
-    smoothieCanvas.style.zIndex = 90;
-
-    var smoothie = new SmoothieChart();
-    smoothie.streamTo(smoothieCanvas);
-    var rline = new TimeSeries();
-    smoothie.addTimeSeries(rline);
-    var chart_step = 0;
-
-
     
     function features(bodies) {
         var fet = [1];
-
         
         for (var i = 0; i < bodies.length; i++) {
             let b = bodies[i];
@@ -195,6 +174,14 @@
         });
     }
 
+    function bias_add(x) {
+        return x.concat([1]);
+    }
+
+    function bias_remove(x) {
+        return x.slice(0, x.length-1);
+    }
+
     function move_random() {
         let h2 = numeric.sub(numeric.mul(numeric.random([OUT_DIM]), 2.0), 1.0);
         h2 = mat_fn(h2, Math.tanh);
@@ -212,20 +199,65 @@
 
     // matrices
     var X_DIM = features(bodies).length;
-    var H_DIM = 40;
+    var H_DIM = 20;
     var OUT_DIM = joints.length;
 
-    var VARIANCE = .1;
-    var learning_rate = 0.01;
+    var VARIANCE = .2;
+    var learning_rate = 0.001;
 
     var W1 = mat(H_DIM, X_DIM);
-    var W2 = mat(OUT_DIM, H_DIM);
+    var W2 = mat(OUT_DIM, H_DIM + 1);
     var gW1;
     var gW2;
 
     var training = false;
 
     var avg_reward = 0.0;
+
+
+    // charting
+    
+    let smoothieCanvas = document.createElement("canvas");
+    document.body.appendChild(smoothieCanvas);
+
+    smoothieCanvas.width = 400;
+    smoothieCanvas.height = 200;
+    smoothieCanvas.style.position = 'absolute';
+    smoothieCanvas.style.bottom = '0px';
+    smoothieCanvas.style.left = '0px';
+    smoothieCanvas.style.zIndex = 90;
+
+    var smoothie = new SmoothieChart();
+    smoothie.streamTo(smoothieCanvas);
+    var rline = new TimeSeries();
+    smoothie.addTimeSeries(rline);
+    var chart_step = 0;
+
+
+    let smoothieCanvas2 = document.createElement("canvas");
+    document.body.appendChild(smoothieCanvas2);
+
+    smoothieCanvas2.width = 400;
+    smoothieCanvas2.height = 200;
+    smoothieCanvas2.style.position = 'absolute';
+    smoothieCanvas2.style.bottom = '0px';
+    smoothieCanvas2.style.right = '0px';
+    smoothieCanvas2.style.zIndex = 90;
+
+    var smoothie2 = new SmoothieChart();
+    
+    var joint_lines = [];
+    for (let i = 0; i < OUT_DIM; i++) {
+        var line = new TimeSeries();
+        joint_lines.push(line);
+        smoothie2.addTimeSeries(line, {strokeStyle:'rgb(' + ((i+1) * 100)%255 + ',' + (i * 50)%255 + ',0)'});
+    }
+    
+    smoothie2.streamTo(smoothieCanvas2);
+
+    var chart_joint_step = 0;
+
+
 
     window.onkeypress = function(evt) {
         if (evt.key == "r") {
@@ -269,15 +301,25 @@
         return mat;
     }
 
+    //let targ = numeric.sub(numeric.mul(numeric.random([4]), 2), 1);
+    //console.log('targ: ' + targ);
+
     function step(train) {
         let x = features(bodies);
         let z1 = numeric.dot(W1, x);
 
         let h1 = mat_fn(z1, Math.tanh); // h1
+        h1 = bias_add(h1);
+
         let z2 = numeric.dot(W2, h1);
         h2 = mat_fn(z2, Math.tanh);
 
         let a = numeric.add(h2, numeric.mul(rand_vect(OUT_DIM), VARIANCE));
+
+        for (let i = 0; i < OUT_DIM; i++) {
+            joint_lines[i].append(chart_joint_step, a[i]);
+        }
+        chart_joint_step += 8;
         
         for (let i = 0; i < OUT_DIM; i++) {
             joints[i].setMotorSpeed(a[i] * 5);
@@ -290,39 +332,46 @@
         }
 
         let p1 = bodies[0].position.x;
-
         
         if (train) {
-            let reward = p1 - p0;
+            let reward = p0 - p1;
             reward = Math.sign(reward);
 
             avg_reward += (reward - avg_reward) * 0.001;
             rline.append(chart_step, avg_reward);
-            chart_step += 1;
+            chart_step += 8;
 
             // update the weights
 
-            let d1 = numeric.sub(a, h2);
+            let d1 = numeric.mul(numeric.sub(h2, a), reward);
             let d2 = mat_fn(z2, tanh_prime);
 
             let d_z2 = numeric.mul(d1, d2);
 
             
             let d_dh1 = numeric.dot(d_z2, W2);
+            d_dh1 = bias_remove(d_dh1);
+
             let d_h1_z1 = mat_fn(z1, tanh_prime);
             let d_z1 = numeric.mul(d_dh1, d_h1_z1);
 
             gW1_targ = full_prod(d_z1, x);
             gW2_targ = full_prod(d_z2, h1);
 
+            W1 = numeric.sub(W1, numeric.mul(gW1_targ, learning_rate));
+            W2 = numeric.sub(W2, numeric.mul(gW2_targ, learning_rate));
+
+            /*
+
             gW1 = numeric.add(gW1, gW1_targ);
             gW2 = numeric.add(gW2, gW2_targ);
+
             
             W1 = numeric.add(W1, numeric.mul(gW1, reward * learning_rate));
             W2 = numeric.add(W2, numeric.mul(gW2, reward * learning_rate));
 
             gW1 = numeric.mul(gW1, 0.8);
-            gW2 = numeric.mul(gW2, 0.8);
+            gW2 = numeric.mul(gW2, 0.8); */
 
             // need full product here to get shape of W2
         }
@@ -339,8 +388,6 @@
             for (let i = 0; i < 100; i++) {
                 step(true);
             }
-
-            console.log(avg_reward);
 
             demo.animate();
 
