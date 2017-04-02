@@ -93,6 +93,27 @@
 
     world.addBody(ground);
     demo.addVisual(ground);
+
+    // charting
+    
+    let smoothieCanvas = document.createElement("canvas");
+    document.body.appendChild(smoothieCanvas);
+
+    smoothieCanvas.width = 200;
+    smoothieCanvas.height = 100;
+    smoothieCanvas.style.opacity = 0.5;
+    smoothieCanvas.style.position = 'absolute';
+    smoothieCanvas.style.top = '200px';
+    smoothieCanvas.style.left = '0px';
+    smoothieCanvas.style.zIndex = 90;
+
+    var smoothie = new SmoothieChart();
+    smoothie.streamTo(smoothieCanvas);
+    var rline = new TimeSeries();
+    smoothie.addTimeSeries(rline);
+    var chart_step = 0;
+
+
     
     function features(bodies) {
         var fet = [1];
@@ -276,6 +297,8 @@
             reward = Math.sign(reward);
 
             avg_reward += (reward - avg_reward) * 0.001;
+            rline.append(chart_step, avg_reward);
+            chart_step += 1;
 
             // update the weights
 
@@ -298,8 +321,8 @@
             W1 = numeric.add(W1, numeric.mul(gW1, reward * learning_rate));
             W2 = numeric.add(W2, numeric.mul(gW2, reward * learning_rate));
 
-            gW1 = numeric.mul(gW1, 0.9);
-            gW2 = numeric.mul(gW2, 0.9);
+            gW1 = numeric.mul(gW1, 0.8);
+            gW2 = numeric.mul(gW2, 0.8);
 
             // need full product here to get shape of W2
         }
