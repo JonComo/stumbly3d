@@ -423,8 +423,8 @@
             let gW1_targ = full_prod(d_z1, x);
             let gW2_targ = full_prod(d_z2, h1);
 
-            W1 = numeric.mul(W1, 0.9998);
-            W2 = numeric.mul(W2, 0.9998);
+            W1 = numeric.mul(W1, 0.99998);
+            W2 = numeric.mul(W2, 0.99998);
 
             W1 = numeric.sub(W1, numeric.mul(gW1_targ, learning_rate));
             W2 = numeric.sub(W2, numeric.mul(gW2_targ, learning_rate));
@@ -454,11 +454,11 @@
             //gW2 = zeros(numeric.dim(W2));
 
             // randomize target position
-            //let d = 30;
-            //target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
+            //let d = 80;
+            //target.position = Vec3(Math.random() * d*2 - d, 0, target.position.z);
 
             variance = .5;
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < 1; i++) {
                 step(true);
             }
 
