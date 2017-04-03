@@ -105,8 +105,8 @@
             b.quaternion.toEuler(eul);
             fet = fet.concat([Math.sin(eul.x), Math.sin(eul.y), Math.sin(eul.z)]);
             fet = fet.concat([Math.cos(eul.x), Math.cos(eul.y), Math.cos(eul.z)]);
-            fet = fet.concat([Math.tanh(b.velocity.x), Math.tanh(b.velocity.y), Math.tanh(b.velocity.z)]);
-            fet = fet.concat([b.position.z]);
+            //fet = fet.concat([Math.tanh(b.velocity.x), Math.tanh(b.velocity.y), Math.tanh(b.velocity.z)]);
+            //fet = fet.concat([b.position.z]);
         }
 
         return fet;
@@ -206,7 +206,7 @@
     var OUT_DIM = joints.length;
 
     var variance = .1;
-    var learning_rate = 0.005;
+    var learning_rate = 0.01;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM + 1);
@@ -266,9 +266,10 @@
         if (evt.key == "r") {
             console.log('randomized weights');
             W1 = mat(H_DIM, X_DIM);
-            W2 = mat(OUT_DIM, H_DIM);
+            W2 = mat(OUT_DIM, H_DIM + 1);
         } else if (evt.key == "b") {
             console.log('randomized body');
+            demo.restartCurrentScene();
             move_random();
         } else if (evt.key == "t") {
             // train
@@ -328,7 +329,7 @@
         chart_joint_step += 8;
         
         for (let i = 0; i < OUT_DIM; i++) {
-            joints[i].setMotorSpeed(a[i] * 5);
+            joints[i].setMotorSpeed(a[i] * 3);
         }
 
         let p0 = bodies[0].position.x;
@@ -364,22 +365,19 @@
             gW1_targ = full_prod(d_z1, x);
             gW2_targ = full_prod(d_z2, h1);
 
-            W1 = numeric.sub(W1, numeric.mul(gW1_targ, learning_rate));
-            W2 = numeric.sub(W2, numeric.mul(gW2_targ, learning_rate));
-
-            /*
+            //W1 = numeric.sub(W1, numeric.mul(gW1_targ, learning_rate));
+            //W2 = numeric.sub(W2, numeric.mul(gW2_targ, learning_rate));
 
             gW1 = numeric.add(gW1, gW1_targ);
             gW2 = numeric.add(gW2, gW2_targ);
 
             
-            W1 = numeric.add(W1, numeric.mul(gW1, reward * learning_rate));
-            W2 = numeric.add(W2, numeric.mul(gW2, reward * learning_rate));
+            W1 = numeric.sub(W1, numeric.mul(gW1, learning_rate));
+            W2 = numeric.sub(W2, numeric.mul(gW2, learning_rate));
 
             gW1 = numeric.mul(gW1, 0.8);
-            gW2 = numeric.mul(gW2, 0.8); */
+            gW2 = numeric.mul(gW2, 0.8);
 
-            // need full product here to get shape of W2
         }
     }
 
@@ -391,7 +389,7 @@
             demo.restartCurrentScene();
             move_random();
             
-            for (let i = 0; i < 500; i++) {
+            for (let i = 0; i < 1000; i++) {
                 step(true);
             }
 
