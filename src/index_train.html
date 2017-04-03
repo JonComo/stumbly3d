@@ -92,7 +92,7 @@
     // Target point
     var target = new CANNON.Body({ mass: 0 });
     target.addShape(new CANNON.Box(Vec3(1, 1, 1)));
-    target.position = Vec3(0, 0, 3);
+    target.position = Vec3(0, 0, 4);
     add_part(target);
 
 
@@ -150,9 +150,10 @@
         let b = bodies[0];
         let p = b.position;
         let angle = Math.atan2(p.y - target.position.y, p.x - target.position.x);
-        let dist = Math.tanh(distance(p, target.position));
+        //let dist = Math.tanh(distance(p, target.position));
+        //Math.tanh(dist/300)
 
-        var fet = [1, Math.cos(angle), Math.sin(angle), Math.tanh(dist/100)];
+        var fet = [1, angle, Math.cos(angle), Math.sin(angle)];
 
         var eul = new CANNON.Vec3(0, 0, 0);
 
@@ -162,11 +163,12 @@
             let b = bodies[i];
             
             b.quaternion.toEuler(eul);
+            //fet = fet.concat([eul.x, eul.y, eul.z]);
             fet = fet.concat([Math.sin(eul.x), Math.sin(eul.y), Math.sin(eul.z)]);
             fet = fet.concat([Math.cos(eul.x), Math.cos(eul.y), Math.cos(eul.z)]);
-
             //fet = fet.concat([Math.tanh(b.velocity.x), Math.tanh(b.velocity.y), Math.tanh(b.velocity.z)]);
-            //fet = fet.concat([b.position.z]);
+            //fet = fet.concat([Math.tanh(b.angularVelocity.x), Math.tanh(b.angularVelocity.y), Math.tanh(b.angularVelocity.z)]);
+            //fet = fet.concat([Math.tanh(b.position.z)]);
         }
 
         return fet;
@@ -175,8 +177,12 @@
     function mat(r, c) {
         var s = 1.0;
         var mat = numeric.random([r, c]);
-        mat = numeric.mul(mat, s);
-        mat = numeric.add(mat, -s/2);
+        for (let i = 0; i < r; i++) {
+            for (let j = 0; j < c; j++) {
+                mat[i][j] = rand_normal() * 0.05;
+            }
+        }
+
         return mat;
     }
 
@@ -243,28 +249,18 @@
     }
 
     function move_random() {
-        let h2 = numeric.sub(numeric.mul(numeric.random([OUT_DIM]), 2.0), 1.0);
-        h2 = mat_fn(h2, Math.tanh);
+        let angles = numeric.sub(numeric.mul(numeric.random([OUT_DIM]), 2.0), 1.0);
+        angles = mat_fn(h2, Math.tanh);
 
         for (let i = 0; i < OUT_DIM; i++) {
-            joints[i].setMotorSpeed(h2[i] * 5);
+            joints[i].setMotorSpeed(angles[i] * 5);
         }
 
         let b = bodies[0];
         b.angularVelocity = Vec3(0, 0, Math.random() * 300 - 150);
 
-        for (let i = 0; i < 200; i++) {
+        for (let i = 0; i < 50; i++) {
             world.step( 1/60 );
-        }
-
-        for (let i = 0; i < OUT_DIM; i++) {
-            joints[i].setMotorSpeed(0);
-        }
-
-        for (let i = 0; i < bodies.length; i++) {
-            let bod = bodies[i];
-            bod.angularVelocity = Vec3(0, 0, 0);
-            bod.linearVelocity = Vec3(0, 0, 0);
         }
     }
 
@@ -285,11 +281,11 @@
 
     // matrices
     var X_DIM = features(bodies).length;
-    var H_DIM = 20;
+    var H_DIM = 40;
     var OUT_DIM = joints.length;
 
-    var variance = .001;
-    var learning_rate = 0.01;
+    var variance = .1;
+    var learning_rate = 0.0006;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM + 1);
@@ -372,15 +368,22 @@
         h2 = mat_fn(z2, Math.tanh);
 
         let a = numeric.add(h2, numeric.mul(rand_vect(OUT_DIM), variance));
+        //a = numeric.mul(a, 1);
 
         for (let i = 0; i < OUT_DIM; i++) {
-            joint_lines[i].append(chart_joint_step, a[i]);
+            joint_lines[i].append(chart_joint_step, h2[i]);
         }
         chart_joint_step += 8;
         
         for (let i = 0; i < OUT_DIM; i++) {
-            joints[i].setMotorSpeed(a[i] * 3);
+            joints[i].setMotorSpeed(a[i] * 5);
         }
+
+        /*
+        for (let i = 0; i < OUT_DIM; i++) {
+            bodies[i].velocity.copy(Vec3(0, 0, 0));
+            bodies[i].angularVelocity.copy(Vec3(0, 0, 0));
+        } */
 
         let p = bodies[0].position;
         let p0 = Vec3(p.x, p.y, p.z);
@@ -395,12 +398,12 @@
             let dist_0 = distance(p0, target.position);
             let dist_1 = distance(p1, target.position);
             let reward = dist_0 - dist_1;
-            reward = Math.sign(reward);
+            //reward = Math.sign(reward);
 
             //let reward = p1 - p0;
             //reward = Math.sign(reward);
 
-            avg_reward += (reward - avg_reward) * 0.001;
+            avg_reward += (reward - avg_reward) * 0.01;
             rline.append(chart_step, avg_reward);
             chart_step += 8;
 
@@ -411,15 +414,17 @@
 
             let d_z2 = numeric.mul(d1, d2);
 
-            
             let d_dh1 = numeric.dot(d_z2, W2);
             d_dh1 = bias_remove(d_dh1);
 
             let d_h1_z1 = mat_fn(z1, tanh_prime);
             let d_z1 = numeric.mul(d_dh1, d_h1_z1);
 
-            gW1_targ = full_prod(d_z1, x);
-            gW2_targ = full_prod(d_z2, h1);
+            let gW1_targ = full_prod(d_z1, x);
+            let gW2_targ = full_prod(d_z2, h1);
+
+            W1 = numeric.mul(W1, 0.9998);
+            W2 = numeric.mul(W2, 0.9998);
 
             W1 = numeric.sub(W1, numeric.mul(gW1_targ, learning_rate));
             W2 = numeric.sub(W2, numeric.mul(gW2_targ, learning_rate));
@@ -449,15 +454,16 @@
             //gW2 = zeros(numeric.dim(W2));
 
             // randomize target position
-            let d = 50;
-            target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
-            
-            variance = 1.0;
-            for (let i = 0; i < 1; i++) {
+            //let d = 30;
+            //target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
+
+            variance = .5;
+            for (let i = 0; i < 10; i++) {
                 step(true);
             }
 
             demo.animate();
+
 
         } else {
             variance = 0.0001;
