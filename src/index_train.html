@@ -190,6 +190,9 @@
             joints[i].setMotorSpeed(h2[i] * 5);
         }
 
+        let b = bodies[0];
+        b.angularVelocity = Vec3(0, 0, Math.random() * 10 - 5);
+
         for (let i = 0; i < 1000; i++) {
             world.step( 1/60 );
         }
@@ -199,11 +202,11 @@
 
     // matrices
     var X_DIM = features(bodies).length;
-    var H_DIM = 20;
+    var H_DIM = 40;
     var OUT_DIM = joints.length;
 
-    var VARIANCE = .2;
-    var learning_rate = 0.001;
+    var variance = .1;
+    var learning_rate = 0.005;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM + 1);
@@ -212,7 +215,7 @@
 
     var training = false;
 
-    var avg_reward = 0.0;
+    var avg_reward = 0.0; 
 
 
     // charting
@@ -264,6 +267,9 @@
             console.log('randomized weights');
             W1 = mat(H_DIM, X_DIM);
             W2 = mat(OUT_DIM, H_DIM);
+        } else if (evt.key == "b") {
+            console.log('randomized body');
+            move_random();
         } else if (evt.key == "t") {
             // train
             training = !training;
@@ -314,7 +320,7 @@
         let z2 = numeric.dot(W2, h1);
         h2 = mat_fn(z2, Math.tanh);
 
-        let a = numeric.add(h2, numeric.mul(rand_vect(OUT_DIM), VARIANCE));
+        let a = numeric.add(h2, numeric.mul(rand_vect(OUT_DIM), variance));
 
         for (let i = 0; i < OUT_DIM; i++) {
             joint_lines[i].append(chart_joint_step, a[i]);
@@ -334,8 +340,8 @@
         let p1 = bodies[0].position.x;
         
         if (train) {
-            let reward = p0 - p1;
-            reward = Math.sign(reward);
+            let reward = p1 - p0;
+            //reward = Math.sign(reward);
 
             avg_reward += (reward - avg_reward) * 0.001;
             rline.append(chart_step, avg_reward);
@@ -385,7 +391,7 @@
             demo.restartCurrentScene();
             move_random();
             
-            for (let i = 0; i < 100; i++) {
+            for (let i = 0; i < 500; i++) {
                 step(true);
             }
 
