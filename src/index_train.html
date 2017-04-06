@@ -257,11 +257,13 @@
         }
 
         let b = bodies[0];
-        b.angularVelocity = Vec3(0, 0, Math.random() * 300 - 150);
+        b.angularVelocity = Vec3(0, 0, Math.random() * 1000 - 500);
 
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < 10; i++) {
             world.step( 1/60 );
         }
+
+        b.angularVelocity = Vec3(0, 0, 0);
     }
 
     function restart_body() {
@@ -285,7 +287,7 @@
     var OUT_DIM = joints.length;
 
     var variance = .1;
-    var learning_rate = 0.00001;
+    var learning_rate = 0.0002;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM + 1);
@@ -445,8 +447,7 @@
 
         if (training) {
 
-            restart_body();
-            move_random();
+            
 
             //gW1 = zeros(numeric.dim(W1));
             //gW2 = zeros(numeric.dim(W2));
@@ -455,7 +456,9 @@
             
 
             variance = .5;
-            for (let i = 0; i < 250; i++) {
+            for (let i = 0; i < 500; i++) {
+                restart_body();
+                move_random();
                 let d = 80;
                 target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
                 step(true);
