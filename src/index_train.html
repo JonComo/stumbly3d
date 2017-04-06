@@ -179,7 +179,7 @@
         var mat = numeric.random([r, c]);
         for (let i = 0; i < r; i++) {
             for (let j = 0; j < c; j++) {
-                mat[i][j] = rand_normal() * 0.05;
+                mat[i][j] = rand_normal() * 0.2;
             }
         }
 
@@ -285,7 +285,7 @@
     var OUT_DIM = joints.length;
 
     var variance = .1;
-    var learning_rate = 0.0006;
+    var learning_rate = 0.00001;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM + 1);
@@ -388,7 +388,7 @@
         let p = bodies[0].position;
         let p0 = Vec3(p.x, p.y, p.z);
 
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < 20; i++) {
             world.step( 1/60 );
         }
 
@@ -404,8 +404,6 @@
             //reward = Math.sign(reward);
 
             avg_reward += (reward - avg_reward) * 0.01;
-            rline.append(chart_step, avg_reward);
-            chart_step += 8;
 
             // update the weights
 
@@ -423,8 +421,8 @@
             let gW1_targ = full_prod(d_z1, x);
             let gW2_targ = full_prod(d_z2, h1);
 
-            W1 = numeric.mul(W1, 0.99998);
-            W2 = numeric.mul(W2, 0.99998);
+            //W1 = numeric.mul(W1, 0.99998);
+            //W2 = numeric.mul(W2, 0.99998);
 
             W1 = numeric.sub(W1, numeric.mul(gW1_targ, learning_rate));
             W2 = numeric.sub(W2, numeric.mul(gW2_targ, learning_rate));
@@ -454,13 +452,17 @@
             //gW2 = zeros(numeric.dim(W2));
 
             // randomize target position
-            //let d = 80;
-            //target.position = Vec3(Math.random() * d*2 - d, 0, target.position.z);
+            
 
             variance = .5;
-            for (let i = 0; i < 1; i++) {
+            for (let i = 0; i < 250; i++) {
+                let d = 80;
+                target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
                 step(true);
             }
+            
+            rline.append(chart_step, avg_reward);
+            chart_step += 8;
 
             demo.animate();
 
