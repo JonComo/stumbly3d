@@ -153,7 +153,7 @@
         //let dist = Math.tanh(distance(p, target.position));
         //Math.tanh(dist/300)
 
-        var fet = [1, angle, Math.cos(angle), Math.sin(angle), Math.tanh((target.position.x-p.x)/400), Math.tanh((target.position.y-p.y)/400)];
+        var fet = [1, Math.cos(angle), Math.sin(angle)];
 
         var eul = new CANNON.Vec3(0, 0, 0);
 
@@ -283,16 +283,14 @@
 
     // matrices
     var X_DIM = features(bodies).length;
-    var H_DIM = 40;
+    var H_DIM = 8;
     var OUT_DIM = joints.length;
 
-    var variance = .1;
-    var learning_rate = 0.0002;
+    var std_dev = 1.0;
+    var learning_rate = 0.01;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM + 1);
-    var gW1;
-    var gW2;
 
     var training = false;
 
@@ -330,36 +328,11 @@
         }
     }
 
-    function tanh_prime(x) {
-        return 1 / cosh(x) ** 2;
-    }
-
-    function cosh(x) {
-        return (1 + Math.exp(-2 * x)) / (2 * Math.exp(-x));
-    }
-
-    function full_prod(a, b) {
-        let rows = a.length;
-        let cols = b.length;
-
-        let mat = numeric.random([rows, cols]);
-        for (let i = 0; i < rows; i++) {
-            for (let j = 0; j < cols; j++) {
-                mat[i][j] = a[i] * b[j];
-            }
-        }
-
-        return mat;
-    }
-
     function distance(v1, v2) {
         return Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2 + (v1.z - v2.z) ** 2);
     }
 
-    //let targ = numeric.sub(numeric.mul(numeric.random([4]), 2), 1);
-    //console.log('targ: ' + targ);
-
-    function step(train) {
+    function step(W1, W2) {
         let x = features(bodies);
         let z1 = numeric.dot(W1, x);
 
@@ -369,11 +342,10 @@
         let z2 = numeric.dot(W2, h1);
         h2 = mat_fn(z2, Math.tanh);
 
-        let a = numeric.add(h2, numeric.mul(rand_vect(OUT_DIM), variance));
-        //a = numeric.mul(a, 1);
+        let a = h2;
 
         for (let i = 0; i < OUT_DIM; i++) {
-            joint_lines[i].append(chart_joint_step, h2[i]);
+            joint_lines[i].append(chart_joint_step, a[i]);
         }
         chart_joint_step += 8;
         
@@ -381,65 +353,20 @@
             joints[i].setMotorSpeed(a[i] * 5);
         }
 
-        /*
-        for (let i = 0; i < OUT_DIM; i++) {
-            bodies[i].velocity.copy(Vec3(0, 0, 0));
-            bodies[i].angularVelocity.copy(Vec3(0, 0, 0));
-        } */
-
         let p = bodies[0].position;
         let p0 = Vec3(p.x, p.y, p.z);
 
         for (let i = 0; i < 20; i++) {
             world.step( 1/60 );
         }
-
+        
         let p1 = bodies[0].position;
         
-        if (train) {
-            let dist_0 = distance(p0, target.position);
-            let dist_1 = distance(p1, target.position);
-            let reward = dist_0 - dist_1;
-            //reward = Math.sign(reward);
+        let dist_0 = distance(p0, target.position);
+        let dist_1 = distance(p1, target.position);
+        let reward = dist_0 - dist_1;
 
-            //let reward = p1 - p0;
-            //reward = Math.sign(reward);
-
-            avg_reward += (reward - avg_reward) * 0.01;
-
-            // update the weights
-
-            let d1 = numeric.mul(numeric.sub(h2, a), reward);
-            let d2 = mat_fn(z2, tanh_prime);
-
-            let d_z2 = numeric.mul(d1, d2);
-
-            let d_dh1 = numeric.dot(d_z2, W2);
-            d_dh1 = bias_remove(d_dh1);
-
-            let d_h1_z1 = mat_fn(z1, tanh_prime);
-            let d_z1 = numeric.mul(d_dh1, d_h1_z1);
-
-            let gW1_targ = full_prod(d_z1, x);
-            let gW2_targ = full_prod(d_z2, h1);
-
-            //W1 = numeric.mul(W1, 0.99998);
-            //W2 = numeric.mul(W2, 0.99998);
-
-            W1 = numeric.sub(W1, numeric.mul(gW1_targ, learning_rate));
-            W2 = numeric.sub(W2, numeric.mul(gW2_targ, learning_rate));
-
-            //gW1 = numeric.add(gW1, gW1_targ);
-            //gW2 = numeric.add(gW2, gW2_targ);
-
-            
-            //W1 = numeric.sub(W1, numeric.mul(gW1, learning_rate));
-            //W2 = numeric.sub(W2, numeric.mul(gW2, learning_rate));
-
-            //gW1 = numeric.mul(gW1, 0.8);
-            //gW2 = numeric.mul(gW2, 0.8);
-
-        }
+        return reward;
     }
 
     function render() {
@@ -447,21 +374,40 @@
 
         if (training) {
 
-            
+            for (let steps = 0; steps < 1; steps ++) {
+                let gW1 = zeros(numeric.dim(W1));
+                let gW2 = zeros(numeric.dim(W2));
 
-            //gW1 = zeros(numeric.dim(W1));
-            //gW2 = zeros(numeric.dim(W2));
+                let sample_reward = 0;
 
-            // randomize target position
-            
+                let samples = 40;
+                for (let i = 0; i < samples; i++) {
+                    restart_body();
+                    move_random();
 
-            variance = .5;
-            for (let i = 0; i < 500; i++) {
-                restart_body();
-                move_random();
-                let d = 80;
-                target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
-                step(true);
+                    let d = 80;
+                    target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
+
+                    // modify W1 and W2 by random noise
+                    
+                    let W1_noise = numeric.add(W1, numeric.mul(mat(H_DIM, X_DIM), std_dev));
+                    let W2_noise = numeric.add(W2, numeric.mul(mat(OUT_DIM, H_DIM + 1), std_dev));
+
+                    let reward = 0;
+                    let ep_steps = 10;
+                    for (let ii = 0; ii < ep_steps; ii++) {
+                        reward += step(W1_noise, W2_noise);
+                    }
+                    reward /= ep_steps;
+
+                    avg_reward += (reward - avg_reward) * 0.01;
+                    
+                    gW1 = numeric.add(gW1, numeric.mul(W1_noise, reward));
+                    gW2 = numeric.add(gW2, numeric.mul(W2_noise, reward));
+                }
+
+                W1 = numeric.add(W1, numeric.mul(gW1, learning_rate / (samples * std_dev)));
+                W2 = numeric.add(W2, numeric.mul(gW2, learning_rate / (samples * std_dev)));
             }
             
             rline.append(chart_step, avg_reward);
@@ -469,10 +415,9 @@
 
             demo.animate();
 
-
         } else {
-            variance = 0.0001;
-            step(false);
+
+            step(W1, W2);
             demo.animate();
         }
         
