@@ -29,7 +29,7 @@
     var joints = [];
 
     world = demo.getWorld();
-    world.gravity.set(0,0,-40);
+    world.gravity.set(0,0,-600);
 
     function add_part(part) {
         world.addBody(part);
@@ -153,7 +153,7 @@
         //let dist = Math.tanh(distance(p, target.position));
         //Math.tanh(dist/300)
 
-        var fet = [1, Math.cos(angle), Math.sin(angle)];
+        var fet = [1, angle, Math.cos(angle), Math.sin(angle), Math.tanh(p.y - target.position.y), Math.tanh(p.x - target.position.x)];
 
         var eul = new CANNON.Vec3(0, 0, 0);
 
@@ -179,7 +179,7 @@
         var mat = numeric.random([r, c]);
         for (let i = 0; i < r; i++) {
             for (let j = 0; j < c; j++) {
-                mat[i][j] = rand_normal() * 0.2;
+                mat[i][j] = rand_normal();
             }
         }
 
@@ -250,20 +250,18 @@
 
     function move_random() {
         let angles = numeric.sub(numeric.mul(numeric.random([OUT_DIM]), 2.0), 1.0);
-        angles = mat_fn(h2, Math.tanh);
+        angles = mat_fn(angles, Math.tanh);
 
         for (let i = 0; i < OUT_DIM; i++) {
-            joints[i].setMotorSpeed(angles[i] * 5);
+            joints[i].setMotorSpeed(angles[i] * 20);
         }
 
         let b = bodies[0];
-        b.angularVelocity = Vec3(0, 0, Math.random() * 1000 - 500);
+        b.angularVelocity = Vec3(0, 0, Math.random() * 300 - 150);
 
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 20; i++) {
             world.step( 1/60 );
         }
-
-        b.angularVelocity = Vec3(0, 0, 0);
     }
 
     function restart_body() {
@@ -283,18 +281,18 @@
 
     // matrices
     var X_DIM = features(bodies).length;
-    var H_DIM = 8;
+    var H_DIM = 24;
     var OUT_DIM = joints.length;
 
     var std_dev = 1.0;
-    var learning_rate = 0.01;
+    var learning_rate = 1.0;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM + 1);
 
     var training = false;
 
-    var avg_reward = 0.0; 
+    var avg_reward = 0.0;
 
     let map = {"ArrowRight": [-1, 0],
                    "ArrowLeft":  [1, 0],
@@ -340,23 +338,28 @@
         h1 = bias_add(h1);
 
         let z2 = numeric.dot(W2, h1);
-        h2 = mat_fn(z2, Math.tanh);
 
-        let a = h2;
+        let h2 = mat_fn(z2, Math.tanh);
 
+        //let ez2 = mat_fn(z2, Math.exp);
+        //let s = numeric.sum(ez2);
+        //let h2 = numeric.mul(ez2, 1/s);
+        //h2 = numeric.sub(numeric.mul(h2, 2), 1);
+
+        /*
         for (let i = 0; i < OUT_DIM; i++) {
             joint_lines[i].append(chart_joint_step, a[i]);
         }
-        chart_joint_step += 8;
+        chart_joint_step += 8; */
         
         for (let i = 0; i < OUT_DIM; i++) {
-            joints[i].setMotorSpeed(a[i] * 5);
+            joints[i].setMotorSpeed(h2[i] * 24);
         }
 
         let p = bodies[0].position;
         let p0 = Vec3(p.x, p.y, p.z);
 
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 1; i++) {
             world.step( 1/60 );
         }
         
@@ -375,39 +378,46 @@
         if (training) {
 
             for (let steps = 0; steps < 1; steps ++) {
-                let gW1 = zeros(numeric.dim(W1));
-                let gW2 = zeros(numeric.dim(W2));
 
-                let sample_reward = 0;
+                let samples = 1;
 
-                let samples = 40;
+                let W1_dir = zeros(numeric.dim(W1));
+                let W2_dir = zeros(numeric.dim(W2));
+
                 for (let i = 0; i < samples; i++) {
-                    restart_body();
-                    move_random();
 
-                    let d = 80;
-                    target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
+                    //let d = 80;
+                    //target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
 
                     // modify W1 and W2 by random noise
                     
-                    let W1_noise = numeric.add(W1, numeric.mul(mat(H_DIM, X_DIM), std_dev));
-                    let W2_noise = numeric.add(W2, numeric.mul(mat(OUT_DIM, H_DIM + 1), std_dev));
+                    let W1_noise = numeric.mul(mat(H_DIM, X_DIM), std_dev);
+                    let W2_noise = numeric.mul(mat(OUT_DIM, H_DIM + 1), std_dev);
+
+                    let W1_mod = numeric.add(W1, W1_noise);
+                    let W2_mod = numeric.add(W2, W2_noise);
+
+                    restart_body();
+                    move_random();
+
+                    let ep_steps = 400;
 
                     let reward = 0;
-                    let ep_steps = 10;
                     for (let ii = 0; ii < ep_steps; ii++) {
-                        reward += step(W1_noise, W2_noise);
+                        reward += step(W1_mod, W2_mod);
                     }
+
                     reward /= ep_steps;
 
-                    avg_reward += (reward - avg_reward) * 0.01;
+                    avg_reward += (distance(bodies[0].position, target.position) - avg_reward) * 0.5;
                     
-                    gW1 = numeric.add(gW1, numeric.mul(W1_noise, reward));
-                    gW2 = numeric.add(gW2, numeric.mul(W2_noise, reward));
+                    W1_dir = numeric.add(W1_dir, numeric.mul(W1_noise, reward));
+                    W2_dir = numeric.add(W2_dir, numeric.mul(W2_noise, reward));
+
                 }
 
-                W1 = numeric.add(W1, numeric.mul(gW1, learning_rate / (samples * std_dev)));
-                W2 = numeric.add(W2, numeric.mul(gW2, learning_rate / (samples * std_dev)));
+                W1 = numeric.add(W1, numeric.mul(W1_dir, learning_rate/samples));
+                W2 = numeric.add(W2, numeric.mul(W2_dir, learning_rate/samples));
             }
             
             rline.append(chart_step, avg_reward);
@@ -417,7 +427,12 @@
 
         } else {
 
-            step(W1, W2);
+            let ep_steps = 1;
+
+            for (let ii = 0; ii < ep_steps; ii++) {
+                step(W1, W2);
+            }
+
             demo.animate();
         }
         
