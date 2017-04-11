@@ -175,6 +175,18 @@
         return fet;
     }
 
+    function mean(m) {
+        return numeric.sum(m)/m.length;
+    }
+
+    function std_zero_mean(m) {
+        let sq = mat_fn(m, function(x) {
+            return x**2;
+        });
+        let v = numeric.sum(sq)/m.length;
+        return Math.sqrt(v);
+    }
+
     function mat(r, c) {
         var s = 1.0;
         var mat = numeric.random([r, c]);
@@ -282,11 +294,11 @@
 
     // matrices
     var X_DIM = features(bodies).length;
-    var H_DIM = 32;
+    var H_DIM = 24;
     var OUT_DIM = joints.length;
 
-    var std_dev = .1;
-    var learning_rate = 1.0;
+    var std_dev = 3.0;
+    var learning_rate = 0.05;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM + 1);
@@ -378,13 +390,12 @@
 
         if (training) {
 
-            for (let steps = 0; steps < 1; steps ++) {
+            let samples = 100;
 
-                let samples = 10;
+            let candidates = [];
+            let rewards = [];
 
-                let W1_dir = zeros(numeric.dim(W1));
-                let W2_dir = zeros(numeric.dim(W2));
-
+            for (let s = 0; s < 1; s ++) {
                 for (let i = 0; i < samples; i++) {
 
                     let d = 80;
@@ -398,28 +409,45 @@
                     let W1_mod = numeric.add(W1, W1_noise);
                     let W2_mod = numeric.add(W2, W2_noise);
 
+                    candidates.push([W1_noise, W2_noise]);
+
                     restart_body();
                     move_random();
 
-                    let ep_steps = 400;
+                    let ep_steps = 5;
 
-                    let reward = 0;
                     for (let ii = 0; ii < ep_steps; ii++) {
-                        reward += step(W1_mod, W2_mod);
+                        step(W1_mod, W2_mod);
                     }
 
-                    reward /= ep_steps;
+                    let dist = distance(bodies[0].position, target.position);
 
-                    avg_reward += (distance(bodies[0].position, target.position) - avg_reward) * 0.5;
-                    
-                    W1_dir = numeric.add(W1_dir, numeric.mul(W1_noise, reward));
-                    W2_dir = numeric.add(W2_dir, numeric.mul(W2_noise, reward));
-
+                    rewards.push(-dist);
                 }
 
-                W1 = numeric.add(W1, numeric.mul(W1_dir, learning_rate/samples));
-                W2 = numeric.add(W2, numeric.mul(W2_dir, learning_rate/samples));
+                let m = mean(rewards); // get mean of rewards
+                rewards = numeric.add(rewards, -m); // subtract mean
+                rewards = numeric.mul(rewards, 1/std_zero_mean(rewards));
+
+                for (let i = 0; i < samples; i++) {
+                    let r = rewards[i];
+                    W1 = numeric.add(W1, numeric.mul(candidates[i][0], learning_rate * r));
+                    W2 = numeric.add(W2, numeric.mul(candidates[i][1], learning_rate * r));
+                }
             }
+
+            // test
+            restart_body();
+            move_random();
+
+            let ep_steps = 5;
+
+            for (let ii = 0; ii < ep_steps; ii++) {
+                step(W1, W2);
+            }
+
+            let dist = distance(bodies[0].position, target.position);
+            avg_reward += (dist - avg_reward) * 0.5;
             
             rline.append(chart_step, avg_reward);
             chart_step += 8;
