@@ -166,8 +166,9 @@
             //fet = fet.concat([eul.x, eul.y, eul.z]);
             fet = fet.concat([Math.sin(eul.x), Math.sin(eul.y), Math.sin(eul.z)]);
             fet = fet.concat([Math.cos(eul.x), Math.cos(eul.y), Math.cos(eul.z)]);
+            fet = fet.concat([eul.x, eul.y, eul.z]);
             //fet = fet.concat([Math.tanh(b.velocity.x), Math.tanh(b.velocity.y), Math.tanh(b.velocity.z)]);
-            //fet = fet.concat([Math.tanh(b.angularVelocity.x), Math.tanh(b.angularVelocity.y), Math.tanh(b.angularVelocity.z)]);
+            fet = fet.concat([Math.tanh(b.angularVelocity.x), Math.tanh(b.angularVelocity.y), Math.tanh(b.angularVelocity.z)]);
             //fet = fet.concat([Math.tanh(b.position.z)]);
         }
 
@@ -281,10 +282,10 @@
 
     // matrices
     var X_DIM = features(bodies).length;
-    var H_DIM = 24;
+    var H_DIM = 32;
     var OUT_DIM = joints.length;
 
-    var std_dev = 1.0;
+    var std_dev = .1;
     var learning_rate = 1.0;
 
     var W1 = mat(H_DIM, X_DIM);
@@ -379,15 +380,15 @@
 
             for (let steps = 0; steps < 1; steps ++) {
 
-                let samples = 1;
+                let samples = 10;
 
                 let W1_dir = zeros(numeric.dim(W1));
                 let W2_dir = zeros(numeric.dim(W2));
 
                 for (let i = 0; i < samples; i++) {
 
-                    //let d = 80;
-                    //target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
+                    let d = 80;
+                    target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
 
                     // modify W1 and W2 by random noise
                     
