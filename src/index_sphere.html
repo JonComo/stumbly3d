@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>stumbly3d</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="css/style.css" type="text/css"/>
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  </head>
+  <body>
+
+    <script src="build/cannon.js"></script>
+    <script src="build/cannon.demo.js"></script>
+    <script src="libs/dat.gui.js"></script>
+    <script src="libs/Three.js"></script>
+    <script src="libs/TrackballControls.js"></script>
+    <script src="libs/Detector.js"></script>
+    <script src="libs/Stats.js"></script>
+    <script src="libs/smoothie.js"></script>
+    <script src="libs/numeric-1.2.6.js"></script>
+
+    <script>
+
+    var demo = new CANNON.Demo();
+    var mass = 1;
+    var world;
+
+    // RL
+    var bodies = [];
+    var joints = [];
+
+    world = demo.getWorld();
+    world.gravity.set(0,0,-600);
+
+    function add_part(part) {
+        world.addBody(part);
+        demo.addVisual(part);
+    }
+
+    function add_box(x, y, z, sx, sy, sz) {
+        let box = new CANNON.Body({ mass: mass });
+        box.addShape(new CANNON.Sphere(1));
+        box.position = Vec3(x, y, z);
+        add_part(box);
+        bodies.push(box);
+        return box;
+    }
+
+    function add_joint(a, b, pa, pb, axis) {
+        var c = new CANNON.HingeConstraint(a, b, {
+            pivotA: pa,
+            axisA: axis,
+            pivotB: pb,
+            axisB: axis
+        });
+
+        c.enableMotor();
+        c.setMotorMaxForce(1e8);
+        world.addConstraint(c);
+        joints.push(c);
+        return c;
+    }
+
+    function Vec3(x, y, z) {
+        return new CANNON.Vec3(x, y, z);
+    }
+
+    var b = add_box(0, 0, 0, 6, 3, .8);
+
+    // legs
+    let lsize = .4;
+
+    let l = 2.0;
+    let d = 5.5;
+    let yd = 1.8;
+
+    /*
+
+    let r1 = add_box(-d, yd, 0, l, lsize, lsize);
+    let r2 = add_box(-d, -yd, 0, l, lsize, lsize);
+    let l1 = add_box(d, yd, 0, l, lsize, lsize);
+    let l2 = add_box(d, -yd, 0, l, lsize, lsize);
+
+    let c1 = add_joint(b, r1, Vec3(-d, yd*2, 0), Vec3(l-.3, -0, 0), Vec3(0, 1, 0));
+    let c2 = add_joint(b, r2, Vec3(-d, -yd*2, 0), Vec3(l-.3, 0, 0), Vec3(0, 1, 0));
+    let c3 = add_joint(b, l1, Vec3(d, yd*2, 0), Vec3(-l+.3, -0, 0), Vec3(0, 1, 0));
+    let c4 = add_joint(b, l2, Vec3(d, -yd*2, 0), Vec3(-l+.3, 0, 0), Vec3(0, 1, 0)); */
+
+    // Ground
+    var groundMaterial = new CANNON.Material("groundMaterial");
+    var groundShape = new CANNON.Plane();
+    var ground = new CANNON.Body({ mass: 0, material: groundMaterial });
+
+
+    // Target point
+    var target = new CANNON.Body({ mass: 0 });
+    target.addShape(new CANNON.Box(Vec3(1, 1, 1)));
+    target.position = Vec3(0, 0, 4);
+    add_part(target);
+
+
+    ground.addShape(groundShape);
+    ground.position.z = -3;
+
+    world.addBody(ground);
+    demo.addVisual(ground);
+
+
+    // charting
+    
+    let smoothieCanvas = document.createElement("canvas");
+    document.body.appendChild(smoothieCanvas);
+
+    smoothieCanvas.width = 400;
+    smoothieCanvas.height = 200;
+    smoothieCanvas.style.position = 'absolute';
+    smoothieCanvas.style.bottom = '0px';
+    smoothieCanvas.style.left = '0px';
+    smoothieCanvas.style.zIndex = 90;
+
+    var smoothie = new SmoothieChart();
+    smoothie.streamTo(smoothieCanvas);
+    var rline = new TimeSeries();
+    smoothie.addTimeSeries(rline);
+    var chart_step = 0;
+
+    
+    function features(bodies) {
+        let b = bodies[0];
+        let p = b.position;
+        let angle = Math.atan2(p.y - target.position.y, p.x - target.position.x);
+        //let dist = Math.tanh(distance(p, target.position));
+        //Math.tanh(dist/300)
+
+        //var fet = [1, Math.cos(angle), Math.sin(angle), Math.tanh(p.y - target.position.y), Math.tanh(p.x - target.position.x)];
+
+        let fet = [1, Math.tanh(p.y - target.position.y), Math.tanh(p.x - target.position.x)];
+
+        var eul = new CANNON.Vec3(0, 0, 0);
+
+        let N = bodies.length;
+        N = 0;
+        for (var i = 0; i < N; i++) {
+            let b = bodies[i];
+            
+            b.quaternion.toEuler(eul);
+            //fet = fet.concat([eul.x, eul.y, eul.z]);
+            fet = fet.concat([Math.sin(eul.z)]);
+            fet = fet.concat([Math.cos(eul.z)]);
+            //fet = fet.concat([eul.x, eul.y, eul.z]);
+            //fet = fet.concat([Math.tanh(b.velocity.x), Math.tanh(b.velocity.y), Math.tanh(b.velocity.z)]);
+            //fet = fet.concat([Math.tanh(b.angularVelocity.x), Math.tanh(b.angularVelocity.y), Math.tanh(b.angularVelocity.z)]);
+            //fet = fet.concat([Math.tanh(b.position.z)]);
+        }
+
+        return fet;
+    }
+
+    let smoothieCanvas2 = document.createElement("canvas");
+    document.body.appendChild(smoothieCanvas2);
+
+    smoothieCanvas2.width = 400;
+    smoothieCanvas2.height = 200;
+    smoothieCanvas2.style.position = 'absolute';
+    smoothieCanvas2.style.bottom = '0px';
+    smoothieCanvas2.style.right = '0px';
+    smoothieCanvas2.style.zIndex = 90;
+
+    var smoothie2 = new SmoothieChart();
+    
+    var fet_lines = [];
+    for (let i = 0; i < features(bodies).length; i++) {
+        var line = new TimeSeries();
+        fet_lines.push(line);
+        smoothie2.addTimeSeries(line, {strokeStyle:'rgb(' + ((i+1) * 100)%255 + ',' + (i * 50)%255 + ',0)'});
+    }
+    
+    smoothie2.streamTo(smoothieCanvas2);
+
+    var chart_fet_step = 0;
+
+
+
+
+
+    function mean(m) {
+        return numeric.sum(m)/m.length;
+    }
+
+    function std_zero_mean(m) {
+        let sq = mat_fn(m, function(x) {
+            return x**2;
+        });
+        let v = numeric.sum(sq)/m.length;
+        return Math.sqrt(v);
+    }
+
+    function mat(r, c, scale) {
+        var s = 1.0;
+        var mat = numeric.random([r, c]);
+        for (let i = 0; i < r; i++) {
+            for (let j = 0; j < c; j++) {
+                mat[i][j] = rand_normal() * scale;
+            }
+        }
+
+        return mat;
+    }
+
+    function rand_normal() {
+        var u = 1 - Math.random(); // Subtraction to flip [0, 1) to (0, 1].
+        var v = 1 - Math.random();
+        return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+    }
+
+    function rand_vect(d) {
+        let v = numeric.random([d]);
+        for (let i = 0; i < d; i++) {
+            v[i] = rand_normal();
+        }
+        return v;
+    }
+
+    function mat_fn(m, fn) {
+        let d = numeric.dim(m);
+
+        if (d.length == 1) {
+            let mcopy = numeric.random([d[0]]);
+
+            for (let j = 0; j < d[0]; j++) {
+                mcopy[j] = fn(m[j]);
+            }
+
+            return mcopy;
+        } else {
+            let mcopy = numeric.random([d[0], d[1]]);
+
+            for (let i = 0; i < d[0]; i++) {
+                for (let j = 0; j < d[1]; j++) {
+                    mcopy[i][j] = fn(m[i][j]);
+                }
+            }
+
+            return mcopy;
+        }
+    }
+
+    function zeros(dimensions) {
+        var array = [];
+
+        for (var i = 0; i < dimensions[0]; ++i) {
+            array.push(dimensions.length == 1 ? 0 : zeros(dimensions.slice(1)));
+        }
+
+        return array;
+    }
+
+    function copy_mat(m) {
+        return mat_fn(m, function(x) {
+            return x;
+        });
+    }
+
+    function bias_add(x) {
+        return x.concat([1]);
+    }
+
+    function bias_remove(x) {
+        return x.slice(0, x.length-1);
+    }
+
+    function move_random() {
+        /*
+        let angles = numeric.sub(numeric.mul(numeric.random([OUT_DIM]), 2.0), 1.0);
+        angles = mat_fn(angles, Math.tanh);
+
+        for (let i = 0; i < OUT_DIM; i++) {
+            joints[i].setMotorSpeed(angles[i] * 5);
+        }
+
+        let b = bodies[0];
+        b.angularVelocity = Vec3(0, 0, Math.random() * 300 - 150);
+
+        for (let i = 0; i < 20; i++) {
+            world.step( 1/60 );
+        } */
+    }
+
+    function restart_body() {
+        let N = bodies.length;
+        for(var i=0; i<N; i++) {
+            let b = bodies[i];
+            b.position.copy(b.initPosition);
+            b.velocity.copy(b.initVelocity);
+            if (b.initAngularVelocity){
+                b.angularVelocity.copy(b.initAngularVelocity);
+                b.quaternion.copy(b.initQuaternion);
+            }
+        }
+    }
+
+    // RL
+
+    // matrices
+    var X_DIM = features(bodies).length;
+    var H_DIM = 800;
+    var OUT_DIM = 2; //joints.length;
+
+    var std_dev = 1.0;
+    var learning_rate = 0.0001;
+
+    var WEIGHT_SCALE = 0.01;
+
+    var W1 = mat(H_DIM, X_DIM, WEIGHT_SCALE);
+    var W2 = mat(OUT_DIM, H_DIM + 1, WEIGHT_SCALE);
+
+    var training = false;
+
+    var avg_reward = 0.0;
+
+    let map = {"ArrowRight": [-1, 0],
+                   "ArrowLeft":  [1, 0],
+                   "ArrowUp":    [0, -1],
+                   "ArrowDown":  [0, 1]};
+
+    window.onkeydown = function(evt) {
+        let m = map[evt.key];
+        if (m) {
+            target.position = Vec3(target.position.x + m[0] * 3, target.position.y + m[1] * 3, target.position.z);
+        }
+    }
+
+    window.onkeypress = function(evt) {
+        console.log(evt.key);
+        if (evt.key == "r") {
+            console.log('randomized weights');
+            W1 = mat(H_DIM, X_DIM, WEIGHT_SCALE);
+            W2 = mat(OUT_DIM, H_DIM + 1, WEIGHT_SCALE);
+        } else if (evt.key == "b") {
+            console.log('randomized body');
+            restart_body();
+            move_random();
+        } else if (evt.key == "t") {
+            // train
+            training = !training;
+
+            if (training == false) {
+                restart_body();
+            }
+        }
+    }
+
+    function distance(v1, v2) {
+        return Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2 + (v1.z - v2.z) ** 2);
+    }
+
+    function step(W1, W2) {
+        let x = features(bodies);
+        let z1 = numeric.dot(W1, x);
+
+        let h1 = mat_fn(z1, Math.tanh); // h1
+        h1 = bias_add(h1);
+
+        let z2 = numeric.dot(W2, h1);
+
+        let h2 = mat_fn(z2, Math.tanh);
+
+        /*
+        let s = numeric.sum(z2);
+        let h2 = numeric.sub(z2, s/z2.length);
+        h2 = numeric.mul(h2, 1/std_zero_mean(h2)); */
+
+        //console.log(h2);
+
+        /*
+        for (let i = 0; i < OUT_DIM; i++) {
+            joint_lines[i].append(chart_joint_step, a[i]);
+        }
+        chart_joint_step += 8; */
+
+        
+        let N = bodies.length;
+        for (let i = 0; i < N; i++) {
+            let b = bodies[i];
+            b.velocity = Vec3(0, 0, 0);
+            b.angularVelocity = Vec3(0, 0, 0);
+        }
+
+        /*
+        for (let i = 0; i < OUT_DIM; i++) {
+            //joints[i].setMotorSpeed(h2[i] * 20);
+            joints[i].setMotorSpeed(0);
+        } */
+
+        bodies[0].applyImpulse(Vec3(h2[0] * 10, h2[1] * 10, 0), bodies[0].position);
+
+        let p = bodies[0].position;
+        let p0 = Vec3(p.x, p.y, p.z);
+
+        //for (let i = 0; i < 1; i++) {
+        world.step( 1/60 );
+        //}
+        
+        let p1 = bodies[0].position;
+        
+        let dist_0 = distance(p0, target.position);
+        let dist_1 = distance(p1, target.position);
+        let reward = dist_0 - dist_1;
+
+        return reward;
+    }
+
+    function render() {
+        requestAnimationFrame( render );
+
+        if (training) {
+
+            let samples = 2;
+
+            let candidates = [];
+            let rewards = [];
+
+            for (let s = 0; s < 1; s ++) {
+                for (let i = 0; i < samples; i++) {
+
+                    let d = 50;
+                    target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
+
+                    // modify W1 and W2 by random noise
+                    
+                    let W1_noise = mat(H_DIM, X_DIM, std_dev);
+                    let W2_noise = mat(OUT_DIM, H_DIM + 1, std_dev);
+
+                    let W1_mod = numeric.add(W1, W1_noise);
+                    let W2_mod = numeric.add(W2, W2_noise);
+
+                    candidates.push([W1_noise, W2_noise]);
+
+                    restart_body();
+                    move_random();
+
+                    let ep_steps = 500;
+
+                    for (let ii = 0; ii < ep_steps; ii++) {
+                        step(W1_mod, W2_mod);
+                    }
+
+                    let dist = distance(bodies[0].position, target.position);
+
+                    rewards.push(-dist);
+                }
+
+                let m = mean(rewards); // get mean of rewards
+                rewards = numeric.add(rewards, -m); // subtract mean
+                rewards = numeric.mul(rewards, 1/std_zero_mean(rewards));
+
+                for (let i = 0; i < samples; i++) {
+                    let r = rewards[i];
+                    W1 = numeric.add(W1, numeric.mul(candidates[i][0], learning_rate/samples * r));
+                    W2 = numeric.add(W2, numeric.mul(candidates[i][1], learning_rate/samples * r));
+                }
+
+                rline.append(chart_step, m);
+                chart_step += 8;
+            }
+
+            demo.animate();
+
+        } else {
+
+            let ep_steps = 10;
+
+            /*
+            let f = features(bodies);
+            for (let i = 0; i < f.length; i++) {
+                var line = fet_lines[i];
+                line.append(chart_fet_step, f[i]);
+            }
+            chart_fet_step += 8; */
+
+            for (let ii = 0; ii < ep_steps; ii++) {
+                step(W1, W2);
+            }
+
+            demo.animate();
+        }
+        
+    }
+
+    render();
+
+    </script>
+  </body>
+</html>
