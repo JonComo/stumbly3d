@@ -104,7 +104,6 @@
     world.addBody(ground);
     demo.addVisual(ground);
 
-
     // charting
     
     let smoothieCanvas = document.createElement("canvas");
@@ -128,59 +127,17 @@
         let b = bodies[0];
         let p = b.position;
         let angle = Math.atan2(p.y - target.position.y, p.x - target.position.x);
-        //let dist = Math.tanh(distance(p, target.position));
-        //Math.tanh(dist/300)
-
-        //var fet = [1, Math.cos(angle), Math.sin(angle), Math.tanh(p.y - target.position.y), Math.tanh(p.x - target.position.x)];
-
-        let fet = [1, Math.tanh(p.y - target.position.y), Math.tanh(p.x - target.position.x)];
-
-        var eul = new CANNON.Vec3(0, 0, 0);
-
-        let N = bodies.length;
-        N = 0;
-        for (var i = 0; i < N; i++) {
-            let b = bodies[i];
-            
-            b.quaternion.toEuler(eul);
-            //fet = fet.concat([eul.x, eul.y, eul.z]);
-            fet = fet.concat([Math.sin(eul.z)]);
-            fet = fet.concat([Math.cos(eul.z)]);
-            //fet = fet.concat([eul.x, eul.y, eul.z]);
-            //fet = fet.concat([Math.tanh(b.velocity.x), Math.tanh(b.velocity.y), Math.tanh(b.velocity.z)]);
-            //fet = fet.concat([Math.tanh(b.angularVelocity.x), Math.tanh(b.angularVelocity.y), Math.tanh(b.angularVelocity.z)]);
-            //fet = fet.concat([Math.tanh(b.position.z)]);
+        let v = [0, 0];
+        if (b.velocity[0] != undefined && b.velocity[1] != undefined) {
+            v[0] = b.velocity[0];
+            v[1] = b.velocity[1];
         }
 
+        //let fet = [1, Math.tanh(p.y - target.position.y), Math.tanh(p.x - target.position.x)];
+        let fet = [1, Math.cos(angle), Math.sin(angle)];
+        //console.log(fet);
         return fet;
     }
-
-    let smoothieCanvas2 = document.createElement("canvas");
-    document.body.appendChild(smoothieCanvas2);
-
-    smoothieCanvas2.width = 400;
-    smoothieCanvas2.height = 200;
-    smoothieCanvas2.style.position = 'absolute';
-    smoothieCanvas2.style.bottom = '0px';
-    smoothieCanvas2.style.right = '0px';
-    smoothieCanvas2.style.zIndex = 90;
-
-    var smoothie2 = new SmoothieChart();
-    
-    var fet_lines = [];
-    for (let i = 0; i < features(bodies).length; i++) {
-        var line = new TimeSeries();
-        fet_lines.push(line);
-        smoothie2.addTimeSeries(line, {strokeStyle:'rgb(' + ((i+1) * 100)%255 + ',' + (i * 50)%255 + ',0)'});
-    }
-    
-    smoothie2.streamTo(smoothieCanvas2);
-
-    var chart_fet_step = 0;
-
-
-
-
 
     function mean(m) {
         return numeric.sum(m)/m.length;
@@ -302,13 +259,13 @@
 
     // matrices
     var X_DIM = features(bodies).length;
-    var H_DIM = 800;
+    var H_DIM = 20;
     var OUT_DIM = 2; //joints.length;
 
-    var std_dev = 1.0;
-    var learning_rate = 0.0001;
+    var std_dev = .01;
+    var learning_rate = 0.1;
 
-    var WEIGHT_SCALE = 0.01;
+    var WEIGHT_SCALE = 0.1;
 
     var W1 = mat(H_DIM, X_DIM, WEIGHT_SCALE);
     var W2 = mat(OUT_DIM, H_DIM + 1, WEIGHT_SCALE);
@@ -377,13 +334,13 @@
         }
         chart_joint_step += 8; */
 
-        
+        /*
         let N = bodies.length;
         for (let i = 0; i < N; i++) {
             let b = bodies[i];
             b.velocity = Vec3(0, 0, 0);
             b.angularVelocity = Vec3(0, 0, 0);
-        }
+        } */
 
         /*
         for (let i = 0; i < OUT_DIM; i++) {
@@ -391,7 +348,7 @@
             joints[i].setMotorSpeed(0);
         } */
 
-        bodies[0].applyImpulse(Vec3(h2[0] * 10, h2[1] * 10, 0), bodies[0].position);
+        bodies[0].applyImpulse(Vec3(h2[0], h2[1], 0), bodies[0].position);
 
         let p = bodies[0].position;
         let p0 = Vec3(p.x, p.y, p.z);
@@ -414,7 +371,7 @@
 
         if (training) {
 
-            let samples = 2;
+            let samples = 5;
 
             let candidates = [];
             let rewards = [];
@@ -458,26 +415,24 @@
                     W1 = numeric.add(W1, numeric.mul(candidates[i][0], learning_rate/samples * r));
                     W2 = numeric.add(W2, numeric.mul(candidates[i][1], learning_rate/samples * r));
                 }
-
-                rline.append(chart_step, m);
-                chart_step += 8;
             }
+
+            // test
+            restart_body();
+
+            for (let ii = 0; ii < 500; ii++) {
+                step(W1, W2);
+            }
+
+            let dist = distance(bodies[0].position, target.position);
+
+            rline.append(chart_step, dist);
+            chart_step += 8;
 
             demo.animate();
 
         } else {
-
-            let ep_steps = 10;
-
-            /*
-            let f = features(bodies);
-            for (let i = 0; i < f.length; i++) {
-                var line = fet_lines[i];
-                line.append(chart_fet_step, f[i]);
-            }
-            chart_fet_step += 8; */
-
-            for (let ii = 0; ii < ep_steps; ii++) {
+            for (let i = 0; i < 10; i ++) {
                 step(W1, W2);
             }
 
