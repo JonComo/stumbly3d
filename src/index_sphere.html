@@ -38,7 +38,7 @@
 
     function add_box(x, y, z, sx, sy, sz) {
         let box = new CANNON.Body({ mass: mass });
-        box.addShape(new CANNON.Sphere(1));
+        box.addShape(new CANNON.Sphere(.1));
         box.position = Vec3(x, y, z);
         add_part(box);
         bodies.push(box);

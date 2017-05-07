@@ -16,6 +16,7 @@
     <script src="libs/Detector.js"></script>
     <script src="libs/Stats.js"></script>
     <script src="libs/smoothie.js"></script>
+    <script src="libs/math.js"></script>
     <script src="libs/numeric-1.2.6.js"></script>
 
     <script>
@@ -145,15 +146,33 @@
 
     var chart_joint_step = 0;
 
+    let canvas_mat = document.createElement("canvas");
+    document.body.appendChild(canvas_mat);
+    canvas_mat.width = 100;
+    canvas_mat.height = 100;
+    canvas_mat.style.position = 'absolute';
+    canvas_mat.style.bottom = '0px';
+    canvas_mat.style.right = '400px';
+    canvas_mat.style.zIndex = 90;
+
+    let canvas_mat_ctx = canvas_mat.getContext('2d');
+    canvas_mat_ctx.fillStyle = "#FF0000";
+    canvas_mat_ctx.fillRect(0, 0, 100, 100);
+    let cmat = [[1, 2],[3, 4]];
+
     
     function features(bodies) {
         let b = bodies[0];
         let p = b.position;
-        let angle = Math.atan2(p.y - target.position.y, p.x - target.position.x);
+        //let angle = Math.atan2(p.y - target.position.y, p.x - target.position.x);
         //let dist = Math.tanh(distance(p, target.position));
         //Math.tanh(dist/300)
 
-        var fet = [1, angle, Math.cos(angle), Math.sin(angle), Math.tanh(p.y - target.position.y), Math.tanh(p.x - target.position.x)];
+        //var fet = [1, Math.cos(angle), Math.sin(angle), Math.tanh(p.y - target.position.y), Math.tanh(p.x - target.position.x)];
+        var fet = [1, Math.tanh(p.y - target.position.y), Math.tanh(p.x - target.position.x)];
+
+        let leg = bodies[1];
+        fet = fet.concat([Math.tanh(p.x-leg.position.x), p.y - leg.position.y, p.z - leg.position.z]);
 
         var eul = new CANNON.Vec3(0, 0, 0);
 
@@ -166,9 +185,9 @@
             //fet = fet.concat([eul.x, eul.y, eul.z]);
             fet = fet.concat([Math.sin(eul.x), Math.sin(eul.y), Math.sin(eul.z)]);
             fet = fet.concat([Math.cos(eul.x), Math.cos(eul.y), Math.cos(eul.z)]);
-            fet = fet.concat([eul.x, eul.y, eul.z]);
+            //fet = fet.concat([eul.x, eul.y, eul.z]);
             //fet = fet.concat([Math.tanh(b.velocity.x), Math.tanh(b.velocity.y), Math.tanh(b.velocity.z)]);
-            fet = fet.concat([Math.tanh(b.angularVelocity.x), Math.tanh(b.angularVelocity.y), Math.tanh(b.angularVelocity.z)]);
+            //fet = fet.concat([Math.tanh(b.angularVelocity.x), Math.tanh(b.angularVelocity.y), Math.tanh(b.angularVelocity.z)]);
             //fet = fet.concat([Math.tanh(b.position.z)]);
         }
 
@@ -290,15 +309,179 @@
         }
     }
 
+    function random_search() {
+        let max_r = -1000000;
+        let attempts = 25;
+        let bW1; let bW2;
+
+        for (let i = 0; i < attempts; i++) {
+            console.log('attempt: ' + i + '/' + attempts);
+            W1 = mat(H_DIM, X_DIM);
+            W2 = mat(OUT_DIM, H_DIM + 1);
+
+            let r = test();
+            if (r > max_r) {
+                max_r = r;
+                console.log('new best! r: ' + r);
+                bW1 = copy_mat(W1);
+                bW2 = copy_mat(W2);   
+            }
+        }
+
+        W1 = bW1;
+        W2 = bW2;
+    }
+
+    function train() {
+        console.log('training');
+        // take some samples and get back the rewards
+        let training_steps = 100;
+        let samples = 10;
+        let ep_steps = 10;
+        let d = 80;
+
+        let candidates = [];
+        let rewards = [];
+
+        for (let s = 0; s < training_steps; s ++) {
+
+            // samples per step
+            for (let i = 0; i < samples; i++) {
+
+                // modify W1 and W2 by random noise
+                
+                let W1_noise = numeric.mul(mat(H_DIM, X_DIM), std_dev);
+                let W2_noise = numeric.mul(mat(OUT_DIM, H_DIM + 1), std_dev);
+
+                let W1_mod = numeric.add(W1, W1_noise);
+                let W2_mod = numeric.add(W2, W2_noise);
+
+                candidates.push([W1_noise, W2_noise]);
+
+                restart_body();
+                move_random();
+                target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
+
+
+                for (let ii = 0; ii < ep_steps; ii++) {
+                    step(W1_mod, W2_mod);
+                }
+
+                let dist = distance(bodies[0].position, target.position);
+
+                rewards.push(-dist);
+            }
+
+            let m = mean(rewards); // get mean of rewards
+            rewards = numeric.add(rewards, -m); // subtract mean
+            rewards = numeric.mul(rewards, 1/std_zero_mean(rewards));
+
+            for (let i = 0; i < samples; i++) {
+                let r = rewards[i];
+                W1 = numeric.add(W1, numeric.mul(candidates[i][0], learning_rate * r));
+                W2 = numeric.add(W2, numeric.mul(candidates[i][1], learning_rate * r));
+            }
+        }
+    }
+
+    function test() {
+        console.log('testing');
+        restart_body();
+        move_random();
+        let samples = 100;
+        let ep_steps = 500;
+        let avg = 0.0;
+        let d = 80;
+
+        for (let s = 0; s < samples; s++) {
+            target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
+
+            for (let ii = 0; ii < ep_steps; ii++) {
+                step(W1, W2);
+            }
+
+            let dist = distance(bodies[0].position, target.position);
+            avg += -dist;
+        }
+
+        return avg/samples;
+    }
+
+    function grid_search() {
+        console.log('beginning grid search...');
+        // arrays of parameter settings
+        //let std_devs =  [.1,    .2,     .3,     .4,     .5,     .8,     1,  1.5,    2,  3];
+        //let lrn_rates = [.001,  .002,   .003,   .005,   .01,    .05,    .1, .2,     .3, .4];
+
+        // lr  std
+        // .01 .4
+        // .005 1
+        // .005 .8
+        // .01  1
+        // .1  .4
+
+        // above avged
+        // .026 .72
+
+        // new best
+        // .015 .95
+
+        let lrn_rates = [0.05,     .010,   .015,    .020,    .025];
+        let std_devs =  [.75,     .85,      .95,    1.05,   1.15];
+
+
+        let N = std_devs.length * lrn_rates.length;
+        let curiter = 0;
+
+        let max_r = -100000;
+        let bestW1; let bestW2;
+
+        let reward_mat = zeros([std_devs.length, lrn_rates.length]);
+
+        for (let i = 0; i < std_devs.length; i ++) {
+            for (let j = 0; j < lrn_rates.length; j++) {
+
+                learning_rate = lrn_rates[j];
+                std_dev = std_devs[i];
+
+                // randomize weights
+                W1 = mat(H_DIM, X_DIM);
+                W2 = mat(OUT_DIM, H_DIM + 1);
+
+                // train
+                train();
+
+                // test
+                let r = test();
+                reward_mat[i][j] = r;
+
+                console.log(curiter + '/' + N + ': got reward: ' + r + ' with lr: ' + learning_rate + ' std_dev: ' + std_dev);
+                curiter += 1;
+
+                if (r > max_r) {
+                    max_r = r;
+                    bestW1 = copy_mat(W1);
+                    bestW2 = copy_mat(W2);
+                    console.log('new best! r: ' + r);
+                }
+            }
+        }
+
+        W1 = copy_mat(bestW1);
+        W2 = copy_mat(bestW2);
+
+        return reward_mat;
+    }
+
     // RL
 
     // matrices
     var X_DIM = features(bodies).length;
-    var H_DIM = 24;
+    var H_DIM = 4;
     var OUT_DIM = joints.length;
 
     var std_dev = 3.0;
-    var learning_rate = 0.05;
+    var learning_rate = 0.01;
 
     var W1 = mat(H_DIM, X_DIM);
     var W2 = mat(OUT_DIM, H_DIM + 1);
@@ -336,6 +519,13 @@
             if (training == false) {
                 restart_body();
             }
+        } else if (evt.key == "g") {
+            // grid search
+            let rmat = grid_search();
+            cmat = rmat;
+        } else if (evt.key == "h") {
+            // random search
+            random_search();
         }
     }
 
@@ -372,9 +562,9 @@
         let p = bodies[0].position;
         let p0 = Vec3(p.x, p.y, p.z);
 
-        for (let i = 0; i < 1; i++) {
-            world.step( 1/60 );
-        }
+        //for (let i = 0; i < 1; i++) {
+        world.step( 1/60 );
+        //}
         
         let p1 = bodies[0].position;
         
@@ -385,21 +575,40 @@
         return reward;
     }
 
+    function draw_cmat() {
+        let cdim = numeric.dim(cmat);
+        let xpad = canvas_mat.width/cdim[1];
+        let ypad = canvas_mat.height/cdim[0];
+        
+        let min = math.min(cmat);
+        let normed = numeric.add(cmat, -min);
+        let max = math.max(normed);
+        normed = numeric.mul(normed, 255/max);
+        normed = numeric.floor(normed);
+        
+        for (let i = 0; i < cdim[0]; i ++) {
+            for (let j = 0; j < cdim[1]; j ++) {
+                let v = normed[i][j];
+                canvas_mat_ctx.fillStyle = "rgba(" + v + ", 0, 0, 1.0)";
+                canvas_mat_ctx.fillRect(j * xpad, i * ypad, xpad, ypad);
+            }
+        }
+    }
+
     function render() {
         requestAnimationFrame( render );
 
         if (training) {
 
-            let samples = 100;
+            let samples = 10;
+            let ep_steps = 10;
+            let d = 80;
 
             let candidates = [];
             let rewards = [];
 
             for (let s = 0; s < 1; s ++) {
                 for (let i = 0; i < samples; i++) {
-
-                    let d = 80;
-                    target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
 
                     // modify W1 and W2 by random noise
                     
@@ -413,8 +622,8 @@
 
                     restart_body();
                     move_random();
+                    target.position = Vec3(Math.random() * d*2 - d, Math.random() * d*2 - d, target.position.z);
 
-                    let ep_steps = 5;
 
                     for (let ii = 0; ii < ep_steps; ii++) {
                         step(W1_mod, W2_mod);
@@ -440,8 +649,6 @@
             restart_body();
             move_random();
 
-            let ep_steps = 5;
-
             for (let ii = 0; ii < ep_steps; ii++) {
                 step(W1, W2);
             }
@@ -461,6 +668,9 @@
             for (let ii = 0; ii < ep_steps; ii++) {
                 step(W1, W2);
             }
+
+            // draw cmat
+            draw_cmat();
 
             demo.animate();
         }
