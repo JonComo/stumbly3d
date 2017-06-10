@@ -30,7 +30,7 @@
     var joints = [];
 
     world = demo.getWorld();
-    world.gravity.set(0,0,-800);
+    world.gravity.set(0,0,-1000);
 
     function add_part(part) {
         world.addBody(part);
@@ -136,30 +136,44 @@
 
     var smoothie2 = new SmoothieChart();
     
-    var joint_lines = [];
-    for (let i = 0; i < joints.length; i++) {
+    var chart_lines = [];
+    for (let i = 0; i < 4; i++) {
         var line = new TimeSeries();
-        joint_lines.push(line);
+        chart_lines.push(line);
         smoothie2.addTimeSeries(line, {strokeStyle:'rgb(' + ((i+1) * 100)%255 + ',' + (i * 50)%255 + ',0)'});
     }
     
     smoothie2.streamTo(smoothieCanvas2);
 
-    var chart_joint_step = 0;
+    var chart_step = 0;
     
-    function features(bodies) {
-        let b = bodies[0];
-        let p = b.position;
-        let angle = Math.atan2(p.y - target.position.y, p.x - target.position.x);
-        let to_targ = [Math.cos(angle), Math.sin(angle)];
+    function features() {
+        // let b = bodies[0];
+        // let p = b.position;
+        // let angle = Math.atan2(p.y - target.position.y, p.x - target.position.x);
+        // let to_targ = [Math.cos(angle), Math.sin(angle)];
 
-        let leg = bodies[1];
-        let angle2 = Math.atan2(p.y - leg.position.y, p.x - leg.position.x);
-        let body_dir = [Math.cos(angle2), Math.sin(angle2)];
+        // let leg = bodies[1];
+        // let angle2 = Math.atan2(p.y - leg.position.y, p.x - leg.position.x);
+        // let body_dir = [Math.cos(angle2), Math.sin(angle2)];
 
-        let dot_prod = numeric.dot(to_targ, body_dir);
+        // let dot_prod = numeric.dot(to_targ, body_dir);
 
-        return [1, dot_prod, to_targ[0], to_targ[1], body_dir[0], body_dir[1]];
+        // return [1, dot_prod, to_targ[0], to_targ[1], body_dir[0], body_dir[1]];
+
+        let max_d = 100000;
+        let besti = 0;
+        for (let i = 0; i < bodies.length; i ++) {
+            let test_d = distance(bodies[i].position, target.position);
+            if (test_d < max_d) {
+                max_d = test_d;
+                besti = i;
+            }
+        }
+
+        let f = math.zeros([bodies.length]);
+        f[besti] = 1;
+        return f;
     }
 
     function mean(m) {
@@ -257,8 +271,8 @@
         }
 
         let b = bodies[0];
-        let delta = Math.random() * 400 - 200;
-        for (let i = 0; i < 20; i++) {
+        let delta = Math.random() * 1000 - 500;
+        for (let i = 0; i < 10; i++) {
             b.angularVelocity = Vec3(0, 0, delta);
             world.step( 1/60 );
         }
@@ -266,8 +280,11 @@
 
     function move_target() {
         let angle = Math.random() * 2 * Math.PI;
-        let d = 80;
+        let d = 100;
         target.position = Vec3(Math.cos(angle) * d, Math.sin(angle) * d, target.position.z);
+        //target.position.x = 100;
+        //target.position.y = 0;
+        //target.position.z = target.position.z;
     }
 
     function restart_body() {
@@ -285,12 +302,9 @@
 
     // RL
 
-    var std_dev = 1.0;
-    var learning_rate = 0.05;
-
     var OUT_DIM = joints.length;
-    var IN_DIM = features(bodies).length;
-    var DIM = Math.max(IN_DIM, OUT_DIM) + 4;
+    var IN_DIM = features().length;
+    var DIM = Math.max(IN_DIM, OUT_DIM);
     var W = mat(DIM, DIM);
 
     var training = false;
@@ -315,7 +329,7 @@
         } else if (evt.key == "b") {
             console.log('randomized body');
             restart_body();
-            move_random();
+            //move_random();
             move_target();
         } else if (evt.key == "t") {
             // train
@@ -339,83 +353,77 @@
         return Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2 + (v1.z - v2.z) ** 2);
     }
 
+    var x_cache = math.zeros([DIM]);
     function step(W) {
-        let x = math.zeros([DIM]);
-        let f = features(bodies);
+        let f = features();
 
-        for (let i = 0; i < f.length; i++) {
-            x[i] = f[i];
+        for (let i = 0; i < DIM; i++) {
+            if (i < IN_DIM) {
+                x_cache[i] = f[i];
+            } else {
+                x_cache[i] = 0;
+            }
         }
 
-        x = numeric.dot(x, W);
-        x = mat_fn(x, Math.tanh);
-
-        x = numeric.dot(x, W);
-        x = mat_fn(x, Math.tanh);
+        x_cache = numeric.dot(x_cache, W);
+        x_cache = mat_fn(x_cache, Math.tanh);
         
         for (let i = 0; i < OUT_DIM; i++) {
-            joints[i].setMotorSpeed(x[i] * 24);
+            joints[i].setMotorSpeed(x_cache[i] * 24);
         }
 
         world.step( 1/60 );
     }
 
+    var std_dev = 3.0;
+    var learning_rate = 0.01;
+    
+    let avg_r = 0;
     function render() {
         requestAnimationFrame( render );
 
         if (training) {
 
-            let samples = 10;
-            let ep_steps = 200;
+            let ep_steps = 100;
 
-            let candidates = [];
-            let rewards = [];
+            // modify W1 and W2 by random noise
+            let W_noise = numeric.mul(mat(DIM, DIM), std_dev);
+            let W_mod = numeric.add(W, W_noise);
 
-            for (let i = 0; i < samples; i++) {
+            restart_body();
+            //move_random();
+            move_target();
 
-                // modify W1 and W2 by random noise
-                let W_noise = numeric.mul(mat(DIM, DIM), std_dev);
-                let W_mod = numeric.add(W, W_noise);
+            step(W);
 
-                candidates.push(W_noise);
+            let dist0 = distance(bodies[0].position, target.position);
 
-                restart_body();
-                move_random();
-                move_target();
-
-                let dist0 = distance(bodies[0].position, target.position);
-
-                for (let ii = 0; ii < ep_steps; ii++) {
-                    step(W_mod);
-                }
-
-                let dist1 = distance(bodies[0].position, target.position);
-
-                rewards.push(dist0 - dist1);
+            for (let ii = 0; ii < ep_steps; ii++) {
+                step(W_mod);
             }
 
-            let m = mean(rewards); // get mean of rewards
-            rewards = numeric.add(rewards, -m); // subtract mean
-            rewards = numeric.mul(rewards, 1/std_zero_mean(rewards));
+            let dist1 = distance(bodies[0].position, target.position);
 
-            for (let i = 0; i < samples; i++) {
-                let r = rewards[i];
-                W = numeric.add(W, numeric.mul(candidates[i], learning_rate * r));
+            let r = dist0 - dist1;
+            avg_r += (r - avg_r) * .2;
+
+            W = numeric.add(W, numeric.mul(W_noise, learning_rate * (r - avg_r)));
+
+            for (let i = 0; i < 4; i++) {
+                let line = chart_lines[i];
+                line.append(chart_step, W[i][0]);
             }
 
-            rline.append(chart_step, m);
+            chart_step += 8;
+
+            rline.append(chart_step, avg_r);
             chart_step += 8;
 
             demo.animate();
 
         } else {
 
-            let ep_steps = 1;
-
-            for (let ii = 0; ii < ep_steps; ii++) {
-                step(W);
-            }
-
+            step(W);
             demo.animate();
         }
         
